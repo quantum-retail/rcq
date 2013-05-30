@@ -32,12 +32,12 @@ public class ResourceConstrainingQueueTest {
 //        final ResourceMonitor monitor = new CachingResourceMonitor(new AggregateResourceMonitor(new SigarResourceMonitor(), new HeapResourceMonitor(), new LoadAverageResourceMonitor(), new CpuResourceMonitor(), new EWMAMonitor(new CpuResourceMonitor(), 100, TimeUnit.MILLISECONDS)), 100L);
         final ResourceMonitor monitor = new CachingResourceMonitor(new AggregateResourceMonitor(), 100L);
 
-        ThreadPoolExecutor ex = new ThreadPoolExecutor(200, 200, 0L, TimeUnit.MILLISECONDS, new ResourceConstrainingQueue<Runnable>(new LinkedBlockingQueue<Runnable>(), monitor, thresholds, 100));
+        ThreadPoolExecutor ex = new ThreadPoolExecutor(4*numProcessors, 4*numProcessors, 0L, TimeUnit.MILLISECONDS, new ResourceConstrainingQueue<Runnable>(new LinkedBlockingQueue<Runnable>(), monitor, thresholds, 100));
         ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(1);
         ThreadMonitor threadMonitor = new ThreadMonitor(ex);
         ScheduledFuture future = scheduledExecutorService.scheduleAtFixedRate(threadMonitor, 100, 100, TimeUnit.MILLISECONDS);
 
-        for (int i = 0; i < numProcessors * 1000; i++) {
+        for (int i = 0; i < numProcessors * 100; i++) {
             futures.add(ex.submit(new BusyWaiter(100)));
         }
 
@@ -54,15 +54,16 @@ public class ResourceConstrainingQueueTest {
 
         assertTrue(threadMonitor.getAverageActiveThreads() < 200);
         double minThreshold = CPU_THRESHOLD - 0.2;
-        assertTrue("Expected average CPU usage to be between "+minThreshold+" and "+CPU_THRESHOLD+" (with a threshold of "+CPU_THRESHOLD+") but it was "+ threadMonitor.getAverageCPU(), threadMonitor.getAverageCPU() <= CPU_THRESHOLD);
-        assertTrue("Expected average CPU usage to be between "+minThreshold+" and "+CPU_THRESHOLD+" (with a threshold of "+CPU_THRESHOLD+") but it was "+ threadMonitor.getAverageCPU(), threadMonitor.getAverageCPU() >= minThreshold);
+        double maxThreshold = CPU_THRESHOLD +0.03; // we can drift slightly over CPU_THRESHOLD, since we stop handing out tasks only after we cross it
+        assertTrue("Expected average CPU usage to be between "+minThreshold+" and "+maxThreshold+" (with a threshold of "+CPU_THRESHOLD+") but it was "+ threadMonitor.getAverageCPU(), threadMonitor.getAverageCPU() <= maxThreshold);
+        assertTrue("Expected average CPU usage to be between "+minThreshold+" and "+maxThreshold+" (with a threshold of "+CPU_THRESHOLD+") but it was "+ threadMonitor.getAverageCPU(), threadMonitor.getAverageCPU() >= minThreshold);
 
         future.cancel(true);
         scheduledExecutorService.shutdown();
         ex.shutdown();
     }
 
-//    This was here as a comparison for CPU % for non-constrained queues. For comparison: it hits about 98%, while the constrained version hits about 88%
+//    This was here as a comparison for CPU % for non-constrained queues.
 //    @Test
 //    public void test_notConstrained() throws Exception {
 //        long start = System.currentTimeMillis();

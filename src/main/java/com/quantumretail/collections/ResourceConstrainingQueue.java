@@ -14,6 +14,18 @@ import java.util.concurrent.*;
  * Note that this resource-constraining behavior ONLY occurs on {@link #poll()} and {@link #remove()}. Other access methods
  * like {@link #peek()}, {@link #iterator()}, {@link #toArray()}, and so on will bypass the resource-constraining behavior.
  *
+ * In some ways, this implementation is naive. At the moment when the resource usage drops below the threshold, we hand out items
+ * to all who ask, until the moment when resource usage rises above the threshold again. That means that if we have a lot
+ * of askers (for example, if it's the queue feeding a very large thread pool) we'll get large bursts of threads, and
+ * typically a higher-than-ideal # of threads active.
+ *
+ * There are some smarter ways around this:
+ *  - we could make it probabilistic, with a decreasing probability that we hand something out based on available resources
+ *  - we could make assumptions about what things we've handed out recently will do to the resource usage -- say, assume
+ *    that anything we've handed out in the last X ms will be adding Y% points, they just haven't yet.
+ *  - we could actually track the tasks that are currently active (via a separate TaskTracker), and come up with a
+ *    weighted moving average of task-to-resource-utilization.
+ *  - ???
  *
  */
 public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {

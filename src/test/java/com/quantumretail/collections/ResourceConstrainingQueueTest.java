@@ -32,7 +32,7 @@ public class ResourceConstrainingQueueTest {
 //        final ResourceMonitor monitor = new CachingResourceMonitor(new AggregateResourceMonitor(new SigarResourceMonitor(), new HeapResourceMonitor(), new LoadAverageResourceMonitor(), new CpuResourceMonitor(), new EWMAMonitor(new CpuResourceMonitor(), 100, TimeUnit.MILLISECONDS)), 100L);
         final ResourceMonitor monitor = new CachingResourceMonitor(new AggregateResourceMonitor(), 100L);
 
-        ThreadPoolExecutor ex = new ThreadPoolExecutor(4*numProcessors, 4*numProcessors, 0L, TimeUnit.MILLISECONDS, new ResourceConstrainingQueue<Runnable>(new LinkedBlockingQueue<Runnable>(), monitor, thresholds, 100));
+        ThreadPoolExecutor ex = new ThreadPoolExecutor(4*numProcessors, 4*numProcessors, 0L, TimeUnit.MILLISECONDS, new ResourceConstrainingQueue<Runnable>(new LinkedBlockingQueue<Runnable>(), new ResourceConstrainingQueue.SimpleResourceConstraintStrategy<Runnable>(monitor, thresholds), 100));
         ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(1);
         ThreadMonitor threadMonitor = new ThreadMonitor(ex);
         ScheduledFuture future = scheduledExecutorService.scheduleAtFixedRate(threadMonitor, 100, 100, TimeUnit.MILLISECONDS);
@@ -109,7 +109,7 @@ public class ResourceConstrainingQueueTest {
         public ThreadMonitor(ThreadPoolExecutor ex) {
             this.ex = ex;
 //            this.resourceMonitor = new AggregateResourceMonitor();
-            this.resourceMonitor = ((ResourceConstrainingQueue)ex.getQueue()).getResourceMonitor();
+            this.resourceMonitor = ((ResourceConstrainingQueue.SimpleResourceConstraintStrategy)((ResourceConstrainingQueue) ex.getQueue()).getConstraintStrategy()).getResourceMonitor();
         }
 
         @Override

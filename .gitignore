@@ -1,0 +1,103 @@
+# project-specific files to ignore 
+pom.xml.backup.*
+
+# generic files to ignore
+*~
+*#
+*.lock
+*.DS_Store
+**/.DS_Store
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+
+# vim temp files
+*.swp
+*.swo
+.*.sw*
+
+# textmate ignores
+*.tmproj
+
+# we never want .class files
+*.class
+
+# build files. I'm sure one of these forms is correct, I'm just not sure which.
+target/**
+target/ 
+target
+
+# SBT files
+lib_managed
+lib_managed/
+project/boot/
+project/boot/*
+*/project/boot
+project/build/target/
+*/project/build/target
+project/plugins/project/build.properties
+project/plugins/project
+src_managed/
+
+
+# locally created by the buildNumber plugin
+buildNumber.properties
+
+# in case it exists...exclude it.
+local.properties
+
+# Excluding IDE files
+*.iml
+**/*.iml
+*.ipr
+**/*.ipr
+*.iws
+**/*.iws
+*.ids
+**/*.ids
+.idea
+.idea/
+.idea/**
+qlogic.i*
+.classpath
+.project
+nbproject
+nbproject/*
+nbproject/**
+.settings/
+.metadata
+Servers
+.springBeans
+.eprj
+run-codefellow
+.codefellow
+.ensime
+etags
+tags
+TAGS
+
+# other random ignores: 
+activemq-data
+tm*.log
+tm*.lck
+tm.out
+*.tm.epoch
+reports
+dist
+build
+deploy/*.jar
+out
+logs
+storage
+_dump
+.manager
+manifest.mf
+semantic.cache
+.scala_dependencies
+multiverse.log
+
+# /
+/.project
+/.settings
+/target

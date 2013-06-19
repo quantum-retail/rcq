@@ -27,7 +27,7 @@ public class SigarResourceMonitor implements ResourceMonitor {
         try {
             this.sigar = new Sigar();
         } catch (Throwable e) {
-            log.debug("Error loading Sigar: ", e);
+            log.debug("Error loading Sigar: "+ e.getMessage());
             sigarAvailable = false;
         }
     }

@@ -3,10 +3,9 @@ package com.quantumretail.resourcemon;
 import org.junit.Test;
 
 import java.lang.management.ManagementFactory;
-import java.lang.management.OperatingSystemMXBean;
-import java.util.ArrayList;
-import java.util.List;
 
+import static junit.framework.Assert.assertEquals;
+import static junit.framework.Assert.assertNull;
 import static org.junit.Assert.assertNotNull;
 
 /**
@@ -16,12 +15,14 @@ import static org.junit.Assert.assertNotNull;
 public class CpuResourceMonitorTest {
 
 
+    private static final double DELTA = 0.0000001;
+
     @Test
     public void testGetSunMethod() throws Exception {
         // this only works on Sun or OpenJDK version 1.7+
         CpuResourceMonitor monitor = new CpuResourceMonitor(true, false);
         Double cpu = monitor.getCPU();
-        System.out.println("CPU is "+ cpu);
+        System.out.println("CPU is " + cpu);
         if (ManagementFactory.getRuntimeMXBean().getVmVendor().contains("Oracle")) {
             assertNotNull(cpu);
         }
@@ -36,7 +37,24 @@ public class CpuResourceMonitorTest {
             random = Math.random() * 100 % 9;
         }
         Double cpu = monitor.getCPU();
-        System.out.println("CPU is "+ cpu+", while our random number is "+ random);
+        System.out.println("CPU is " + cpu + ", while our random number is " + random);
         assertNotNull(cpu);
+    }
+
+    @Test
+    public void test_getProcessTime_edges() throws Exception {
+        CpuResourceMonitor monitor = new CpuResourceMonitor(false, true);
+        Double value = monitor.getProcessTime(1, 1, 0, 0, 1);
+        assertNull(value); // we don't return anything if the prev* values are null.
+
+        value = monitor.getProcessTime(1, 1, 1, 1, 1);
+        assertNull(value); // we still don't have enough to go by to return a valid value -- we don't have 2 unique measurements.
+
+        value = monitor.getProcessTime(2, 2, 1, 1, 1);
+        assertEquals(1.0, value, DELTA);
+
+        // now calling it again where current = prev should return the previous reading.
+        value = monitor.getProcessTime(2, 5, 2, 2, 1);
+        assertEquals(1.0, value, DELTA);
     }
 }

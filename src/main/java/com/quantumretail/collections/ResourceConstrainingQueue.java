@@ -26,6 +26,9 @@ import java.util.concurrent.*;
  *    weighted moving average of task-to-resource-utilization.
  *  - ???
  *
+ * TODO: take in a parameter to indicate "strict vs. approximate" -- strict would use blocking in remove(), poll() and take(),
+ * while approximate would keep the current non-blocking (but slightly less accurate) behavior.
+ *
  */
 public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
     public static <T> ResourceConstrainingQueueBuilder<T> builder() {
@@ -35,7 +38,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
     protected static final long DEFAULT_POLL_FREQ = 100L;
 
     final BlockingQueue<T> delegate;
-    private long retryFrequencyMS = DEFAULT_POLL_FREQ;
+    long retryFrequencyMS = DEFAULT_POLL_FREQ;
 
     final ConstraintStrategy<T> constraintStrategy;
 
@@ -99,8 +102,21 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
 
 
     /**
-     * Returns null if we cannot currently execute anything.
-     * @return
+     * Note that this is an approximation, and as such, we take some liberties in regards accuracy when called from
+     * multiple threads.
+     * In particular:
+     *
+     * This implementation will do a peek, see if we have resource for the task at the head of the queue, and if so,
+     * call delegate.remove() and return the result. That means that if two threads call this at the very same time,
+     * they'll both check to see if we have resources for the same task (the one at the front of the queue) but they will
+     * then return the first and then second task in the queue -- but neither thread will have checked to see if we have
+     * resources for that second task!
+     * We could fix this by doing something more accurate here, but since we don't have an atomic "compareAndGet" type
+     * of operation from the underlying queue, we may need to resort to blocking. Currently, we're preferring speed over
+     * complete accuracy here. In the face of multiple concurrent calls, the checks we're doing aren't accurate anyway.
+     *
+     *
+     * @return the next value in the queue or null if we cannot currently execute anything.
      */
     @Override
     public T poll() {
@@ -115,7 +131,9 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
     }
 
     /**
-     * We check for enough resources at the beginning of this method,
+     * See poll() for a description of the potential inaccuracy in this method.
+     *
+     * @see #poll() for an explanation of the potential inaccuracy in this method
      * @return
      * @throws InterruptedException
      */
@@ -140,7 +158,11 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
         Thread.sleep(retryFrequencyMS);
     }
 
-
+    /**
+     * See poll() for a description of the potential inaccuracy in this method.
+     *
+     * @see #poll() for an explanation of the potential inaccuracy in this method
+     */
     @Override
     public T poll(long timeout, TimeUnit unit) throws InterruptedException {
         // we have to do a little extra work here because we may have to wait for some time before we have enough resources.
@@ -164,87 +186,160 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
         return null;
     }
 
-
+    /**
+     * This method does NOT make any resource constraint checks. It just delegates to the underlying queue.
+     * @see java.util.Queue#element()
+     */
     @Override
     public T element() {
         return delegate.element();
     }
 
+    /**
+     * This method does NOT make any resource constraint checks. It just delegates to the underlying queue.
+     * @see java.util.Queue#peek()
+     */
     @Override
     public T peek() {
         return delegate.peek();
     }
 
+    /**
+     * This method does not make any resource constraint checks. It just delegates to the underlying queue. So it is
+     * literally "how many elements in the queue?" not "how many elements do I have resources to execute?"
+     * @see java.util.Queue#size()
+     */
     @Override
     public int size() {
         return delegate.size();
     }
 
+    /**
+     * This method does not make any resource constraint checks. It just delegates to the underlying queue. So it is
+     * literally "are there any elements in the queue?" not "do I have resources to execute any elements in the queue?"
+     * @see java.util.Queue#isEmpty()
+     */
     @Override
     public boolean isEmpty() {
         return delegate.isEmpty();
     }
 
+    /**
+     * This method does not make any resource constraint checks. It just delegates to the underlying queue.
+     * @see java.util.Queue#contains(Object)
+     */
     @Override
     public boolean contains(Object o) {
         return delegate.contains(o);
     }
 
+    /**
+     * This method does not make any resource constraint checks. It just delegates to the underlying queue.
+     * @see java.util.concurrent.BlockingQueue#drainTo(java.util.Collection)
+     */
     public int drainTo(Collection<? super T> c) {
         return delegate.drainTo(c);
     }
 
+    /**
+     * This method does not make any resource constraint checks. It just delegates to the underlying queue.
+     * @see java.util.concurrent.BlockingQueue#drainTo(java.util.Collection, int)
+     */
     public int drainTo(Collection<? super T> c, int maxElements) {
         return delegate.drainTo(c, maxElements);
     }
 
+    /**
+     * This method just delegates to the underlying queue; the returned iterator will NOT honor any resource constraints.
+     * This may change in the future.
+     *
+     * @see java.util.concurrent.BlockingQueue#iterator()
+     */
     @Override
     public Iterator<T> iterator() {
         return delegate.iterator();
     }
 
+    /**
+     * This method does NOT make any resource constraint checks. It just delegates to the underlying queue.
+     * @see java.util.Queue#toArray()
+     */
     @Override
     public Object[] toArray() {
         return delegate.toArray();
     }
 
+    /**
+     * This method does NOT make any resource constraint checks. It just delegates to the underlying queue.
+     * @see java.util.Queue#toArray(Object[])
+     */
     @Override
     public <T1> T1[] toArray(T1[] a) {
         return delegate.toArray(a);
     }
 
+    /**
+     * This method does not make any resource constraint checks. It just delegates to the underlying queue.
+     * @see java.util.Queue#remove(Object)
+     */
     @Override
     public boolean remove(Object o) {
         return delegate.remove(o);
     }
 
+    /**
+     * This method does not make any resource constraint checks. It just delegates to the underlying queue.
+     * @see java.util.Queue#containsAll(java.util.Collection)
+     */
     @Override
     public boolean containsAll(Collection<?> c) {
         return delegate.containsAll(c);
     }
 
+    /**
+     * This method does not make any resource constraint checks. It just delegates to the underlying queue.
+     * @see java.util.concurrent.BlockingQueue#addAll(java.util.Collection)
+     */
     public boolean addAll(Collection<? extends T> c) {
         return delegate.addAll(c);
     }
 
+    /**
+     * This method does not make any resource constraint checks. It just delegates to the underlying queue.
+     * @see java.util.concurrent.BlockingQueue#removeAll(java.util.Collection)
+     */
     @Override
     public boolean removeAll(Collection<?> c) {
         return delegate.removeAll(c);
     }
 
+    /**
+     * This method does not make any resource constraint checks. It just delegates to the underlying queue.
+     * @see java.util.concurrent.BlockingQueue#retainAll(java.util.Collection)
+     */
     @Override
     public boolean retainAll(Collection<?> c) {
         return delegate.retainAll(c);
     }
 
+    /**
+     * This method does not make any resource constraint checks. It just delegates to the underlying queue.
+     * @see java.util.concurrent.BlockingQueue#clear()
+     */
     @Override
     public void clear() {
         delegate.clear();
     }
 
+    /**
+     * returns true if o is an instance of ResourceConstrainingQueues and their underlying queues are equal.
+     * Most of the definition of "equality", then, is delegated to the underlying queues.
+     *
+     * @see java.util.Collection#equals(Object)
+     */
     @Override
     public boolean equals(Object o) {
-        return delegate.equals(o);
+        return o instanceof ResourceConstrainingQueue && delegate.equals(o);
     }
 
     @Override
@@ -252,10 +347,27 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
         return delegate.hashCode();
     }
 
+
+    /**
+     * Add t to the back of the queue. Note that ResourceConstrainingQueue doesn't make any resource constraint checks
+     * on insertions into the queue, only on removals.
+     *
+     * @see java.util.concurrent.BlockingQueue#put(Object)
+     * @param t
+     * @throws InterruptedException
+     */
     public void put(T t) throws InterruptedException {
         delegate.put(t);
     }
 
+    /**
+     * Note that ResourceConstrainingQueue doesn't make any resource constraint checks
+     * on insertions into the queue, only on removals.
+     *
+     * @see java.util.concurrent.BlockingQueue#offer(Object, long, java.util.concurrent.TimeUnit)
+     * @param t
+     * @throws InterruptedException
+     */
     public boolean offer(T t, long timeout, TimeUnit unit) throws InterruptedException {
         return delegate.offer(t, timeout, unit);
     }
@@ -265,6 +377,10 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
         return delegate.remainingCapacity();
     }
 
+    /**
+     * Get the constraint strategy that we're using to decide whether to hand out items.
+     * @return
+     */
     public ConstraintStrategy<T> getConstraintStrategy() {
         return constraintStrategy;
     }
@@ -338,9 +454,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
             } else {
                 this.thresholds = new ConcurrentHashMap<String, Double>(thresholds);
             }
-
         }
-
 
         @Override
         public boolean shouldReturn(T nextItem) {
@@ -366,7 +480,6 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
             }
 
             return true;
-
         }
 
         public ResourceMonitor getResourceMonitor() {

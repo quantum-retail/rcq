@@ -7,7 +7,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 /**
  * There's a lot of ugly code here, because CPU usage isn't available in a standard way.
@@ -62,7 +61,6 @@ public class CpuResourceMonitor implements ResourceMonitor {
             } catch (Throwable t) {
                 // ignore; we'll set this flag back to false the first time we run getCPU();
             }
-
         }
     }
 
@@ -73,7 +71,7 @@ public class CpuResourceMonitor implements ResourceMonitor {
         Double d = getCPU();
         if (d != null) {
             m.put(CPU, d);
-            m.put(CPU+".crm", d); // for debugging: sometimes I'm curious about what this one reports vs. another CPU monitoring method.
+            m.put(CPU + ".crm", d); // for debugging: sometimes I'm curious about what this one reports vs. another CPU monitoring method.
         }
         return m;
     }
@@ -122,8 +120,7 @@ public class CpuResourceMonitor implements ResourceMonitor {
         if (d != null && !d.isNaN() && d >= 0.0) {
             if (d > 1) d = 1.0;
             return d;
-        }
-        else return null;
+        } else return null;
     }
 
     private Long getProcessCPUTime() throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
@@ -138,7 +135,19 @@ public class CpuResourceMonitor implements ResourceMonitor {
         }
     }
 
-    private Double getProcessTime(long currentTimeNanos, long processCpuTime, long prevProcessTimestamp, long prevProcessCpuTime, int numProcessors) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+    /**
+     * Note that this method has side effects: it updates the prev* instance fields.
+     * @param currentTimeNanos the current time
+     * @param processCpuTime the amount of CPU time, in nanos, that this process has consumed.
+     * @param prevProcessTimestamp the timestamp (in nanos) of the last reading
+     * @param prevProcessCpuTime the amount of CPU time, in nanos, that this process had consumed last time this method was called.
+     * @param numProcessors the number of processors in this system.
+     * @return
+     * @throws NoSuchMethodException
+     * @throws InvocationTargetException
+     * @throws IllegalAccessException
+     */
+    protected Double getProcessTime(long currentTimeNanos, long processCpuTime, long prevProcessTimestamp, long prevProcessCpuTime, int numProcessors) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
 
         if (currentTimeNanos > prevProcessTimestamp) {
             if (prevProcessCpuTime > 0) {

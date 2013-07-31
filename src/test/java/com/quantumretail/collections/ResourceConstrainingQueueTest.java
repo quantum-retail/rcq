@@ -1,6 +1,8 @@
 package com.quantumretail.collections;
 
-import com.quantumretail.resourcemon.*;
+import com.quantumretail.resourcemon.AggregateResourceMonitor;
+import com.quantumretail.resourcemon.CachingResourceMonitor;
+import com.quantumretail.resourcemon.ResourceMonitor;
 import org.junit.Test;
 
 import java.lang.management.ManagementFactory;
@@ -10,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
 
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 /**
  * TODO: document me.
@@ -24,7 +26,7 @@ public class ResourceConstrainingQueueTest {
     public void testHappyPath() throws Exception {
         long start = System.currentTimeMillis();
         int numProcessors = ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors();
-        Map<String,Double> thresholds = new HashMap<String,Double>();
+        Map<String, Double> thresholds = new HashMap<String, Double>();
         final Double CPU_THRESHOLD = 0.9;
         thresholds.put(ResourceMonitor.CPU, CPU_THRESHOLD);
 //        thresholds.put(ResourceMonitor.HEAP_MEM, 0.9);
@@ -32,7 +34,7 @@ public class ResourceConstrainingQueueTest {
 //        final ResourceMonitor monitor = new CachingResourceMonitor(new AggregateResourceMonitor(new SigarResourceMonitor(), new HeapResourceMonitor(), new LoadAverageResourceMonitor(), new CpuResourceMonitor(), new EWMAMonitor(new CpuResourceMonitor(), 100, TimeUnit.MILLISECONDS)), 100L);
         final ResourceMonitor monitor = new CachingResourceMonitor(new AggregateResourceMonitor(), 100L);
 
-        ThreadPoolExecutor ex = new ThreadPoolExecutor(4*numProcessors, 4*numProcessors, 0L, TimeUnit.MILLISECONDS, new ResourceConstrainingQueue<Runnable>(new LinkedBlockingQueue<Runnable>(), new ResourceConstrainingQueue.SimpleResourceConstraintStrategy<Runnable>(monitor, thresholds), 100));
+        ThreadPoolExecutor ex = new ThreadPoolExecutor(4 * numProcessors, 4 * numProcessors, 0L, TimeUnit.MILLISECONDS, new ResourceConstrainingQueue<Runnable>(new LinkedBlockingQueue<Runnable>(), new ResourceConstrainingQueue.SimpleResourceConstraintStrategy<Runnable>(monitor, thresholds), 100));
         ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(1);
         ThreadMonitor threadMonitor = new ThreadMonitor(ex);
         ScheduledFuture future = scheduledExecutorService.scheduleAtFixedRate(threadMonitor, 100, 100, TimeUnit.MILLISECONDS);
@@ -46,17 +48,17 @@ public class ResourceConstrainingQueueTest {
         }
 
         long runtime = System.currentTimeMillis() - start;
-        System.out.println("Finished in "+ runtime + " ms");
+        System.out.println("Finished in " + runtime + " ms");
 
-        System.out.println("Average active threads: "+ threadMonitor.getAverageActiveThreads());
-        System.out.println("Max active threads: "+ threadMonitor.getMaxActiveThreads());
+        System.out.println("Average active threads: " + threadMonitor.getAverageActiveThreads());
+        System.out.println("Max active threads: " + threadMonitor.getMaxActiveThreads());
         System.out.println("Average CPU: " + threadMonitor.getAverageCPU());
 
         assertTrue(threadMonitor.getAverageActiveThreads() < 200);
         double minThreshold = CPU_THRESHOLD - 0.2;
-        double maxThreshold = CPU_THRESHOLD +0.03; // we can drift slightly over CPU_THRESHOLD, since we stop handing out tasks only after we cross it
-        assertTrue("Expected average CPU usage to be between "+minThreshold+" and "+maxThreshold+" (with a threshold of "+CPU_THRESHOLD+") but it was "+ threadMonitor.getAverageCPU(), threadMonitor.getAverageCPU() <= maxThreshold);
-        assertTrue("Expected average CPU usage to be between "+minThreshold+" and "+maxThreshold+" (with a threshold of "+CPU_THRESHOLD+") but it was "+ threadMonitor.getAverageCPU(), threadMonitor.getAverageCPU() >= minThreshold);
+        double maxThreshold = CPU_THRESHOLD + 0.03; // we can drift slightly over CPU_THRESHOLD, since we stop handing out tasks only after we cross it
+        assertTrue("Expected average CPU usage to be between " + minThreshold + " and " + maxThreshold + " (with a threshold of " + CPU_THRESHOLD + ") but it was " + threadMonitor.getAverageCPU(), threadMonitor.getAverageCPU() <= maxThreshold);
+        assertTrue("Expected average CPU usage to be between " + minThreshold + " and " + maxThreshold + " (with a threshold of " + CPU_THRESHOLD + ") but it was " + threadMonitor.getAverageCPU(), threadMonitor.getAverageCPU() >= minThreshold);
 
         future.cancel(true);
         scheduledExecutorService.shutdown();
@@ -98,18 +100,56 @@ public class ResourceConstrainingQueueTest {
 //        ex.shutdown();
 //    }
 
+
+    @Test
+    public void test_remove() throws Exception {
+        ConstantConstraintStrategy<Integer> strategy = new ConstantConstraintStrategy<Integer>(true);
+        ResourceConstrainingQueue<Integer> q = ResourceConstrainingQueue.<Integer>builder()
+                .withConstraintStrategy(strategy)
+                .build();
+
+        // basic test:
+        q.add(5);
+        assertEquals(1, q.size());
+        Integer val = q.remove();
+        assertEquals((Integer) 5, val);
+        assertEquals(0, q.size());
+    }
+
+
+    /**
+     * I'll admit, this test is here more for test coverage numbers than the real possibility that the builder is broken.
+     * Although i suppose the builder *could* be broken....
+     * @throws Exception
+     */
+    @Test
+    public void testBuilder() throws Exception {
+        LinkedBlockingDeque<Object> deque = new LinkedBlockingDeque<Object>();
+        ConstantConstraintStrategy strategy = new ConstantConstraintStrategy(false);
+        ResourceConstrainingQueue<Object> q = ResourceConstrainingQueue.builder()
+                .withConstraintStrategy(strategy)
+                .withRetryFrequency(10000)
+                .withBlockingQueue(deque)
+                .build();
+
+        assertSame(strategy, q.constraintStrategy);
+        assertSame(deque, q.delegate);
+        assertEquals(10000, q.retryFrequencyMS);
+
+    }
+
     private class ThreadMonitor implements Runnable {
         final ThreadPoolExecutor ex;
         ResourceMonitor resourceMonitor;
         int numSamples;
         int activeSum;
         int maxActive = 0;
-        List<Map<String,Double>> loadSamples = new ArrayList<Map<String,Double>>();
+        List<Map<String, Double>> loadSamples = new ArrayList<Map<String, Double>>();
 
         public ThreadMonitor(ThreadPoolExecutor ex) {
             this.ex = ex;
 //            this.resourceMonitor = new AggregateResourceMonitor();
-            this.resourceMonitor = ((ResourceConstrainingQueue.SimpleResourceConstraintStrategy)((ResourceConstrainingQueue) ex.getQueue()).getConstraintStrategy()).getResourceMonitor();
+            this.resourceMonitor = ((ResourceConstrainingQueue.SimpleResourceConstraintStrategy) ((ResourceConstrainingQueue) ex.getQueue()).getConstraintStrategy()).getResourceMonitor();
         }
 
         @Override
@@ -119,11 +159,11 @@ public class ResourceConstrainingQueueTest {
             activeSum += active;
             numSamples++;
             loadSamples.add(resourceMonitor.getLoad());
-            System.out.println(ex.getActiveCount() +" "+ ex.getCompletedTaskCount()+" "+ resourceMonitor.getLoad());
+            System.out.println(ex.getActiveCount() + " " + ex.getCompletedTaskCount() + " " + resourceMonitor.getLoad());
         }
 
         public double getAverageActiveThreads() {
-            return (double)activeSum/(double)numSamples;
+            return (double) activeSum / (double) numSamples;
         }
 
         public int getMaxActiveThreads() {
@@ -157,7 +197,7 @@ public class ResourceConstrainingQueueTest {
         public Long call() throws Exception {
             long startMS = System.currentTimeMillis();
             long foo = 0;
-            while (System.currentTimeMillis() < (startMS + waitMS) ) {
+            while (System.currentTimeMillis() < (startMS + waitMS)) {
                 // busy wait!
                 foo = (9000 * (foo + 1) + 3 + foo) % 3;
             }
@@ -165,4 +205,16 @@ public class ResourceConstrainingQueueTest {
         }
     }
 
+    private class ConstantConstraintStrategy<T> implements ResourceConstrainingQueue.ConstraintStrategy<T> {
+        boolean value;
+
+        private ConstantConstraintStrategy(boolean value) {
+            this.value = value;
+        }
+
+        @Override
+        public boolean shouldReturn(Object nextItem) {
+            return value;
+        }
+    }
 }

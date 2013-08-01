@@ -123,6 +123,13 @@
             <version>1.7.4</version>
         </dependency>
 
+        <!-- Logback for test only -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>1.0.13</version>
+            <scope>test</scope>
+        </dependency>
 
         <dependency>
             <!-- license: Apache 2 -->

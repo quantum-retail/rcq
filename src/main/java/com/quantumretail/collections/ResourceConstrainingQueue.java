@@ -465,11 +465,10 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
             /*
             if taskTracker != null
                 get current # of tasks from taskTracker
-                calculate load-task-per-point
+                calculate load-per-task-point
                 add this task's points. Does that put us past the threshold?
             else
                 is current load past the threshold?
-
              */
             for (Map.Entry<String, Double> t : thresholds.entrySet()) {
                 if (load.containsKey(t.getKey())) {

@@ -34,16 +34,16 @@ public class TaskDictatedResourceMonitor implements ResourceMonitor {
         // get a list of what is currently executing
         final Collection<Map<String, Double>> tasks = taskTracker.getCurrentlyExecutingTasks();
         // sum up what is currently executing and apply the scaling factor to it.
-        return applyScalingFactor(sumTasks(tasks));
+        return applyScalingFactor(sumTasks(tasks), getScalingFactor());
     }
 
     /**
-     * Note that, for performance reasons, we'll mutate the input map in-place rather than making a copy.
-     * We call this method a lot, and it's private, so it's worth it.
-     * @param inputMap WILL BE MUTATED
+     * Note that, for performance reasons, we may mutate the input map in-place rather than making a copy.
+     * We call this method a lot, and it's an internal method, so it's worth it.
+     * @param inputMap MAY BE MUTATED
      * @return
      */
-    private Map<String, Double> applyScalingFactor(Map<String, Double> inputMap) {
+    protected Map<String, Double> applyScalingFactor(Map<String, Double> inputMap, double scalingFactor) {
         if (scalingFactor != 0 && scalingFactor != 1.0) {
             for (Map.Entry<String, Double> s : inputMap.entrySet()) {
                 inputMap.put(s.getKey(), (s.getValue() / scalingFactor));
@@ -66,5 +66,9 @@ public class TaskDictatedResourceMonitor implements ResourceMonitor {
             }
         }
         return load;
+    }
+
+    public double getScalingFactor() {
+        return scalingFactor;
     }
 }

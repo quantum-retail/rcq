@@ -7,6 +7,10 @@ import java.util.concurrent.TimeUnit;
 
 import static junit.framework.Assert.assertEquals;
 
+/**
+ * This class tests EWMAMonitor and EWMA together because the classes used to be together.
+ * Since this test does cover both classes fairly well, it wasn't worth splitting them out.
+ */
 public class EWMAMonitorTest {
 
     private static final double DELTA = 0.000001;
@@ -16,7 +20,7 @@ public class EWMAMonitorTest {
 
         final ConstantResourceMonitor rm = ConstantResourceMonitor.build("CPU", 1.0, "MEM", 0.5);
         TestClock clock = new TestClock();
-        EWMAMonitor monitor = new EWMAMonitor(rm, 10, TimeUnit.MILLISECONDS, clock);
+        EWMAMonitor monitor = new EWMAMonitor(rm, new EWMA(10, TimeUnit.MILLISECONDS, clock));
 
         Map<String, Double> load = monitor.getLoad();
         assertEquals(1.0, load.get("CPU"));
@@ -52,8 +56,8 @@ public class EWMAMonitorTest {
 
         final ConstantResourceMonitor rm = ConstantResourceMonitor.build("CPU", 1.0, "MEM", 0.5);
         TestClock clock = new TestClock();
-        EWMAMonitor monitor1 = new EWMAMonitor(rm, 10, TimeUnit.MILLISECONDS, clock);
-        EWMAMonitor monitor2 = new EWMAMonitor(rm, 10, TimeUnit.MILLISECONDS, clock);
+        EWMAMonitor monitor1 = new EWMAMonitor(rm, new EWMA(10, TimeUnit.MILLISECONDS, clock));
+        EWMAMonitor monitor2 = new EWMAMonitor(rm, new EWMA(10, TimeUnit.MILLISECONDS, clock));
 
         Map<String, Double> load = monitor1.getLoad();
         assertEquals(1.0, load.get("CPU"));
@@ -92,7 +96,7 @@ public class EWMAMonitorTest {
     public void test_same_values() throws Exception {
         final ConstantResourceMonitor rm = ConstantResourceMonitor.build("CPU", 1.0, "MEM", 0.5);
         TestClock clock = new TestClock();
-        EWMAMonitor monitor = new EWMAMonitor(rm, 10, TimeUnit.MILLISECONDS, clock);
+        EWMAMonitor monitor = new EWMAMonitor(rm, new EWMA(10, TimeUnit.MILLISECONDS, clock));
 
         Map<String, Double> load = monitor.getLoad();
         assertEquals(3, load.size()); // it's 3 because of the "alpha" value.
@@ -117,7 +121,7 @@ public class EWMAMonitorTest {
     public void test_advance_by_halflife() throws Exception {
         final ConstantResourceMonitor rm = ConstantResourceMonitor.build("CPU", 1000.0, "MEM", 500.0);
         TestClock clock = new TestClock();
-        EWMAMonitor monitor = new EWMAMonitor(rm, 2, TimeUnit.MILLISECONDS, clock);
+        EWMAMonitor monitor = new EWMAMonitor(rm, new EWMA(2, TimeUnit.MILLISECONDS, clock));
 
         Map<String, Double> load;
 
@@ -157,7 +161,7 @@ public class EWMAMonitorTest {
     public void test_high_alpha() throws Exception {
         final ConstantResourceMonitor rm = ConstantResourceMonitor.build("CPU", 1000.0, "MEM", 100.0);
         TestClock clock = new TestClock();
-        EWMAMonitor monitor = new EWMAMonitor(rm, 1, TimeUnit.NANOSECONDS, clock);
+        EWMAMonitor monitor = new EWMAMonitor(rm, new EWMA(1, TimeUnit.NANOSECONDS, clock));
 
         Map<String, Double> load;
 
@@ -184,23 +188,23 @@ public class EWMAMonitorTest {
 
     @Test
     public void test_calc_alpha() throws Exception {
-        double val = EWMAMonitor.alpha(6584875, TimeUnit.SECONDS.toNanos(1));
+        double val = EWMA.alpha(6584875, TimeUnit.SECONDS.toNanos(1));
         assertEquals(1.0, val, DELTA);
     }
 
     @Test
     public void test_calc_alpha_short_halflife() throws Exception {
-        double val = EWMAMonitor.alpha(1, TimeUnit.SECONDS.toMillis(3));
+        double val = EWMA.alpha(1, TimeUnit.SECONDS.toMillis(3));
         assertEquals(1.0, val, DELTA);
     }
 
     @Test
     public void test_calc_alpha_long_halflife() throws Exception {
-        double val = EWMAMonitor.alpha(TimeUnit.DAYS.toMillis(1), TimeUnit.SECONDS.toMillis(3));
+        double val = EWMA.alpha(TimeUnit.DAYS.toMillis(1), TimeUnit.SECONDS.toMillis(3));
         assertEquals(0.000024, val, DELTA);
     }
 
-    public static class TestClock implements EWMAMonitor.Clock {
+    public static class TestClock implements EWMA.Clock {
         long value = 0;
 
         @Override

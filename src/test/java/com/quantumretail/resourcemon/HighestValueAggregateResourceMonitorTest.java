@@ -25,18 +25,18 @@ public class HighestValueAggregateResourceMonitorTest {
         final Map<String, Double> m1 = new HashMap<String, Double>();
         m1.put("CPU", 0.3);
         m1.put("MEM", 0.2);
-        final ResourceMonitor rm1 = new TestResourceMonitor(m1);
+        final ResourceMonitor rm1 = new ConstantResourceMonitor(m1);
 
         final Map<String, Double> m2 = new HashMap<String, Double>();
         m2.put("CPU", 0.2);
         m2.put("MEM", 0.2);
         m2.put("OTHER", 1.1);
-        final ResourceMonitor rm2 = new TestResourceMonitor(m2);
+        final ResourceMonitor rm2 = new ConstantResourceMonitor(m2);
 
         final Map<String, Double> m3 = new HashMap<String, Double>();
         m3.put("CPU", 0.5);
         m3.put("MEM", 0.1);
-        final ResourceMonitor rm3 = new TestResourceMonitor(m3);
+        final ResourceMonitor rm3 = new ConstantResourceMonitor(m3);
 
         HighestValueAggregateResourceMonitor monitor = new HighestValueAggregateResourceMonitor(rm1, rm2, rm3);
 
@@ -55,18 +55,18 @@ public class HighestValueAggregateResourceMonitorTest {
         final Map<String, Double> m1 = new HashMap<String, Double>();
         m1.put("CPU", 0.9);
         m1.put("MEM", 0.2);
-        final ResourceMonitor rm1 = new TestResourceMonitor(m1);
+        final ResourceMonitor rm1 = new ConstantResourceMonitor(m1);
 
         final Map<String, Double> m2 = new HashMap<String, Double>();
         m2.put("CPU", 0.2);
         m2.put("MEM", 0.4);
         m2.put("OTHER", 1.1);
-        final ResourceMonitor rm2 = new TestResourceMonitor(m2);
+        final ResourceMonitor rm2 = new ConstantResourceMonitor(m2);
 
         final Map<String, Double> m3 = new HashMap<String, Double>();
         m3.put("CPU", 0.5);
         m3.put("MEM", 0.1);
-        final ResourceMonitor rm3 = new TestResourceMonitor(m3);
+        final ResourceMonitor rm3 = new ConstantResourceMonitor(m3);
 
         HighestValueAggregateResourceMonitor monitor = new HighestValueAggregateResourceMonitor(rm1, rm2, rm3);
 
@@ -78,16 +78,4 @@ public class HighestValueAggregateResourceMonitorTest {
 
     }
 
-    public static class TestResourceMonitor implements ResourceMonitor {
-        public final Map<String, Double> map;
-
-        public TestResourceMonitor(Map<String, Double> map) {
-            this.map = map;
-        }
-
-        @Override
-        public Map<String, Double> getLoad() {
-            return map;
-        }
-    }
 }

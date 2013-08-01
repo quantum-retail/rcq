@@ -1,10 +1,7 @@
 package com.quantumretail.resourcemon;
 
-import java.lang.management.ManagementFactory;
-import java.lang.management.MemoryMXBean;
-import java.lang.management.MemoryUsage;
-import java.lang.management.OperatingSystemMXBean;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Aggregates several resource monitors together. It just merges their maps, so later monitors trump earlier ones if
@@ -26,12 +23,12 @@ public class AggregateResourceMonitor implements ResourceMonitor {
         // as a default, we put Sigar first because, if it's available, it has perhaps the widest compatibility. However in my experience so far, it is less accurate than the CPU time available within
         // the Oracle JVM for 1.7x JVMs. That could well be platform-dependent, though.
         //
-        monitors.addAll(Arrays.asList( new SigarResourceMonitor(), new HeapResourceMonitor(), new LoadAverageResourceMonitor(), new CpuResourceMonitor()));
+        monitors.addAll(Arrays.asList(new SigarResourceMonitor(), new HeapResourceMonitor(), new LoadAverageResourceMonitor(), new EWMAMonitor(new CpuResourceMonitor(), 1, TimeUnit.SECONDS)));
     }
 
     @Override
     public Map<String, Double> getLoad() {
-        Map<String,Double> m = new HashMap<String,Double>();
+        Map<String, Double> m = new HashMap<String, Double>();
 
         for (ResourceMonitor monitor : monitors) {
             m.putAll(monitor.getLoad());

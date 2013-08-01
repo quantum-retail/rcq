@@ -14,23 +14,22 @@ import java.util.concurrent.*;
 
 import static org.junit.Assert.*;
 
-/**
- * TODO: document me.
- *
- */
 public class ResourceConstrainingQueueTest {
 
     final List<Future> futures = new ArrayList<Future>();
 
-    @Test
+    /**
+     * this test is not entirely deterministic, so it's disabled by default.
+     * But it is a really interesting test to run now and again to see how well things operate.
+     * @throws Exception
+     */
+//    @Test
     public void testHappyPath() throws Exception {
         long start = System.currentTimeMillis();
         int numProcessors = ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors();
         Map<String, Double> thresholds = new HashMap<String, Double>();
         final Double CPU_THRESHOLD = 0.9;
         thresholds.put(ResourceMonitor.CPU, CPU_THRESHOLD);
-//        thresholds.put(ResourceMonitor.HEAP_MEM, 0.9);
-//        thresholds.put(ResourceMonitor.LOAD_AVERAGE, 1.5);
 //        final ResourceMonitor monitor = new CachingResourceMonitor(new AggregateResourceMonitor(new SigarResourceMonitor(), new HeapResourceMonitor(), new LoadAverageResourceMonitor(), new CpuResourceMonitor(), new EWMAMonitor(new CpuResourceMonitor(), 100, TimeUnit.MILLISECONDS)), 100L);
         final ResourceMonitor monitor = new CachingResourceMonitor(new AggregateResourceMonitor(), 100L);
 

@@ -3,7 +3,10 @@ package com.quantumretail.rcq.predictor;
 import java.util.Collection;
 
 /**
- * A placeholder for a resource-per-task enhancement, Coming Soon™
+ * A component that keeps track of what is currently out there.
+ * This interface assumes a particular use case of the resource-constraining queue: that of something that is
+ * constraining how much gets executed (or at least, how much of some resource is currently "in flight"). But that is a
+ * common-enough use case for the library that it seems reasonable to codify it.
  */
 public interface TaskTracker<T> {
 

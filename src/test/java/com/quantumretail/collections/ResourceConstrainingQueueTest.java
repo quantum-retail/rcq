@@ -25,7 +25,7 @@ public class ResourceConstrainingQueueTest {
      * But it is a really interesting test to run now and again to see how well things operate.
      * @throws Exception
      */
-    @Test
+//    @Test
     public void testHappyPath() throws Exception {
         long start = System.currentTimeMillis();
         int numProcessors = ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors();

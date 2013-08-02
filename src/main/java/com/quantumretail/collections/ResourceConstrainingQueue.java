@@ -1,5 +1,10 @@
 package com.quantumretail.collections;
 
+import com.codahale.metrics.Counter;
+import com.codahale.metrics.Gauge;
+import com.codahale.metrics.Meter;
+import com.codahale.metrics.MetricRegistry;
+import com.quantumretail.MetricsAware;
 import com.quantumretail.constraint.ConstraintStrategies;
 import com.quantumretail.constraint.ConstraintStrategy;
 import com.quantumretail.rcq.predictor.TaskTracker;
@@ -32,7 +37,7 @@ import java.util.concurrent.TimeUnit;
  * while approximate would keep the current non-blocking (but slightly less accurate) behavior.
  *
  */
-public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
+public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAware {
 
     public static <T> ResourceConstrainingQueueBuilder<T> builder() {
         return new ResourceConstrainingQueueBuilder<T>();
@@ -46,6 +51,11 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
     final ConstraintStrategy<T> constraintStrategy;
 
     final TaskTracker<T> taskTracker;
+
+    private Meter trackedRemovals = null;
+    private Meter additions = null;
+    private Counter pendingItems = null;
+    private Meter sleeps = null;
 
     /**
      * Build a ResourceConstrainingQueue using all default options.
@@ -72,6 +82,13 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
     }
 
     protected T trackIfNecessary(T item) {
+        if (trackedRemovals != null) {
+            trackedRemovals.mark();
+        }
+        if (pendingItems != null) {
+            pendingItems.dec();
+        }
+
         if (taskTracker != null) {
             return taskTracker.register(item);
         } else {
@@ -80,10 +97,22 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
     }
 
     public boolean add(T t) {
+        if (pendingItems != null) {
+            pendingItems.inc();
+        }
+        if (additions != null) {
+            additions.mark();
+        }
         return delegate.add(t);
     }
 
     public boolean offer(T t) {
+        if (pendingItems != null) {
+            pendingItems.inc();
+        }
+        if (additions != null) {
+            additions.mark();
+        }
         return delegate.offer(t);
     }
 
@@ -178,6 +207,9 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
      * If we decide we want pluggable behavior here, take a look at LMAX Disruptor's WaitStrategy classes
      */
     private void sleep() throws InterruptedException {
+        if (sleeps != null) {
+            sleeps.mark();
+        }
         Thread.sleep(retryFrequencyMS);
     }
 
@@ -261,7 +293,11 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
      * @see java.util.concurrent.BlockingQueue#drainTo(java.util.Collection)
      */
     public int drainTo(Collection<? super T> c) {
-        return delegate.drainTo(c);
+        int count = delegate.drainTo(c);
+        if (pendingItems != null) {
+            pendingItems.dec(count);
+        }
+        return count;
     }
 
     /**
@@ -269,7 +305,11 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
      * @see java.util.concurrent.BlockingQueue#drainTo(java.util.Collection, int)
      */
     public int drainTo(Collection<? super T> c, int maxElements) {
-        return delegate.drainTo(c, maxElements);
+        int count = delegate.drainTo(c, maxElements);
+        if (pendingItems != null) {
+            pendingItems.dec(count);
+        }
+        return count;
     }
 
     /**
@@ -307,6 +347,9 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
      */
     @Override
     public boolean remove(Object o) {
+        if (pendingItems != null) {
+            pendingItems.dec();
+        }
         return delegate.remove(o);
     }
 
@@ -324,6 +367,9 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
      * @see java.util.concurrent.BlockingQueue#addAll(java.util.Collection)
      */
     public boolean addAll(Collection<? extends T> c) {
+        if (pendingItems != null) {
+            pendingItems.inc(c.size());
+        }
         return delegate.addAll(c);
     }
 
@@ -333,6 +379,9 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
      */
     @Override
     public boolean removeAll(Collection<?> c) {
+        if (pendingItems != null) {
+            pendingItems.dec(c.size());
+        }
         return delegate.removeAll(c);
     }
 
@@ -342,6 +391,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
      */
     @Override
     public boolean retainAll(Collection<?> c) {
+        //TODO: pendingItems isn't tracking changes via this method yet.
         return delegate.retainAll(c);
     }
 
@@ -351,6 +401,10 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
      */
     @Override
     public void clear() {
+        if (pendingItems != null) {
+            int size = delegate.size();
+            pendingItems.dec(size);
+        }
         delegate.clear();
     }
 
@@ -380,6 +434,12 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
      * @throws InterruptedException
      */
     public void put(T t) throws InterruptedException {
+        if (pendingItems != null) {
+            pendingItems.inc();
+        }
+        if (additions != null) {
+            additions.mark();
+        }
         delegate.put(t);
     }
 
@@ -392,6 +452,12 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
      * @throws InterruptedException
      */
     public boolean offer(T t, long timeout, TimeUnit unit) throws InterruptedException {
+        if (pendingItems != null) {
+            pendingItems.inc();
+        }
+        if (additions != null) {
+            additions.mark();
+        }
         return delegate.offer(t, timeout, unit);
     }
 
@@ -406,6 +472,32 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
      */
     public ConstraintStrategy<T> getConstraintStrategy() {
         return constraintStrategy;
+    }
+
+    public void registerMetrics(MetricRegistry metrics, String name) {
+        metrics.register(MetricRegistry.name(ResourceConstrainingQueue.class, name, "size"),
+                new Gauge<Integer>() {
+                    @Override
+                    public Integer getValue() {
+                        return size();
+                    }
+                });
+
+        pendingItems = metrics.counter(MetricRegistry.name(ResourceConstrainingQueue.class, name, "pending-items"));
+        trackedRemovals = metrics.meter(MetricRegistry.name(ResourceConstrainingQueue.class, name, "remove-poll-take"));
+        additions = metrics.meter(MetricRegistry.name(ResourceConstrainingQueue.class, name, "add-offer-put"));
+        sleeps = metrics.meter(MetricRegistry.name(ResourceConstrainingQueue.class, "sleeps"));
+
+        if (this.constraintStrategy instanceof MetricsAware) {
+            ((MetricsAware) constraintStrategy).registerMetrics(metrics, name);
+        }
+        if (this.delegate instanceof MetricsAware) {
+            ((MetricsAware) delegate).registerMetrics(metrics, name);
+        }
+        if (this.taskTracker instanceof MetricsAware) {
+            ((MetricsAware) taskTracker).registerMetrics(metrics, name);
+        }
+
     }
 
 
@@ -449,5 +541,6 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
         }
 
     }
+
 
 }

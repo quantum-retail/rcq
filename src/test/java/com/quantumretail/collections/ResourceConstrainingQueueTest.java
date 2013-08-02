@@ -1,5 +1,7 @@
 package com.quantumretail.collections;
 
+import com.codahale.metrics.Meter;
+import com.codahale.metrics.MetricRegistry;
 import com.quantumretail.constraint.ConstraintStrategy;
 import com.quantumretail.constraint.SimpleReactiveConstraintStrategy;
 import com.quantumretail.resourcemon.ResourceMonitor;
@@ -23,7 +25,7 @@ public class ResourceConstrainingQueueTest {
      * But it is a really interesting test to run now and again to see how well things operate.
      * @throws Exception
      */
-    //@Test
+    @Test
     public void testHappyPath() throws Exception {
         long start = System.currentTimeMillis();
         int numProcessors = ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors();
@@ -32,13 +34,23 @@ public class ResourceConstrainingQueueTest {
         thresholds.put(ResourceMonitor.CPU, CPU_THRESHOLD);
 //        final ResourceMonitor monitor = new CachingResourceMonitor(new AggregateResourceMonitor(new SigarResourceMonitor(), new HeapResourceMonitor(), new LoadAverageResourceMonitor(), new CpuResourceMonitor(), new EWMAMonitor(new CpuResourceMonitor(), 100, TimeUnit.MILLISECONDS)), 100L);
 //        final ResourceMonitor monitor = new CachingResourceMonitor(new AggregateResourceMonitor(), 100L);
+        MetricRegistry metricRegistry = new MetricRegistry();
 
-        ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(1);
-        ThreadPoolExecutor ex = new ThreadPoolExecutor(4 * numProcessors, 4 * numProcessors, 0L, TimeUnit.MILLISECONDS, ResourceConstrainingQueues.<Runnable>defaultQueue(thresholds));
-        ThreadMonitor threadMonitor = new ThreadMonitor(ex);
+        ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(1, new ResourceConstrainingQueues.NameableDaemonThreadFactory("thread-monitor-"));
+//        ResourceConstrainingQueue<Runnable> queue = new ResourceConstrainingQueue<Runnable>(new LinkedBlockingQueue<Runnable>(), ConstraintStrategies.<Runnable>defaultReactiveConstraintStrategy(thresholds, 100), 100);
+        ResourceConstrainingQueue<Runnable> queue = ResourceConstrainingQueues.<Runnable>defaultQueue(thresholds);
+
+        queue.registerMetrics(metricRegistry, "queue");
+
+        ThreadPoolExecutor ex = new ThreadPoolExecutor(4 * numProcessors, 4 * numProcessors, 0L, TimeUnit.MILLISECONDS, queue);
+
+        // send in the metricsRegistry if you want a super-verbose view of what's going on:
+        ThreadMonitor threadMonitor = new ThreadMonitor(ex, null);
+//        ThreadMonitor threadMonitor = new ThreadMonitor(ex, metricRegistry);
+
         ScheduledFuture future = scheduledExecutorService.scheduleAtFixedRate(threadMonitor, 100, 100, TimeUnit.MILLISECONDS);
 
-        for (int i = 0; i < numProcessors * 100; i++) {
+        for (int i = 0; i < numProcessors * 500; i++) {
             futures.add(ex.submit(new BusyWaiter(100)));
         }
 
@@ -140,15 +152,17 @@ public class ResourceConstrainingQueueTest {
     private class ThreadMonitor implements Runnable {
         final ThreadPoolExecutor ex;
         ResourceMonitor resourceMonitor;
+        MetricRegistry registry;
         int numSamples;
         int activeSum;
         int maxActive = 0;
         List<Map<String, Double>> loadSamples = new ArrayList<Map<String, Double>>();
 
-        public ThreadMonitor(ThreadPoolExecutor ex) {
+        public ThreadMonitor(ThreadPoolExecutor ex, MetricRegistry registry) {
             this.ex = ex;
 //            this.resourceMonitor = new AggregateResourceMonitor();
             this.resourceMonitor = ((SimpleReactiveConstraintStrategy) ((ResourceConstrainingQueue) ex.getQueue()).getConstraintStrategy()).getResourceMonitor();
+            this.registry = registry;
         }
 
         @Override
@@ -159,6 +173,11 @@ public class ResourceConstrainingQueueTest {
             numSamples++;
             loadSamples.add(resourceMonitor.getLoad());
             System.out.println(ex.getActiveCount() + " " + ex.getCompletedTaskCount() + " " + resourceMonitor.getLoad());
+            if (registry != null) {
+                for (Map.Entry<String, Meter> m : registry.getMeters().entrySet()) {
+                    System.out.println(" -- " + m.getKey() + " : " + m.getValue().getMeanRate() + ", " + m.getValue().getOneMinuteRate() + " (" + m.getValue().getCount() + ")");
+                }
+            }
         }
 
         public double getAverageActiveThreads() {

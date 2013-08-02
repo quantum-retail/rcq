@@ -23,13 +23,6 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class ResourceConstrainingQueues {
 
-    private static ThreadFactory daemonThreadFactory = new ThreadFactory() {
-        @Override
-        public Thread newThread(Runnable r) {
-            return null;  // TODO: Customise this generated block
-        }
-    };
-
     public static <T> ResourceConstrainingQueue<T> defaultQueue() {
         return new ResourceConstrainingQueue<T>();
     }
@@ -54,7 +47,7 @@ public class ResourceConstrainingQueues {
     }
 
     public static <T> ResourceConstrainingQueue<T> defaultQueueWithFeedbackThread(Map<String, Double> thresholds) {
-        ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor(daemonThreadFactory);
+        ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor(new NameableDaemonThreadFactory("load-feedback-watcher-"));
         return defaultQueueWithFeedbackThread(thresholds, executorService);
 
     }

@@ -140,6 +140,13 @@
 
         <dependency>
             <!-- license: Apache 2 -->
+            <groupId>com.codahale.metrics</groupId>
+            <artifactId>metrics-core</artifactId>
+            <version>3.0.1</version>
+        </dependency>
+
+        <dependency>
+            <!-- license: Apache 2 -->
             <!-- sigar is by Hyperic, but repackaged by fusesource for maven use -->
             <groupId>org.fusesource</groupId>
             <artifactId>sigar</artifactId>

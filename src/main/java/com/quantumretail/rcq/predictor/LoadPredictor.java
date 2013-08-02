@@ -3,8 +3,7 @@ package com.quantumretail.rcq.predictor;
 import java.util.Map;
 
 /**
- * TODO: document me.
- *
+ * Predict the load for this particular object
  */
 public interface LoadPredictor {
 

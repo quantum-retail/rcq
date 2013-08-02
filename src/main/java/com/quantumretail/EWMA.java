@@ -1,5 +1,7 @@
-package com.quantumretail.resourcemon;
+package com.quantumretail;
 
+
+import com.quantumretail.resourcemon.EWMAMonitor;
 
 import java.util.HashMap;
 import java.util.Map;

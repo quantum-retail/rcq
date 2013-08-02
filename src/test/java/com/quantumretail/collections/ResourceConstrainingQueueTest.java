@@ -1,7 +1,7 @@
 package com.quantumretail.collections;
 
-import com.quantumretail.resourcemon.AggregateResourceMonitor;
-import com.quantumretail.resourcemon.CachingResourceMonitor;
+import com.quantumretail.constraint.ConstraintStrategy;
+import com.quantumretail.constraint.SimpleReactiveConstraintStrategy;
 import com.quantumretail.resourcemon.ResourceMonitor;
 import org.junit.Test;
 
@@ -23,7 +23,7 @@ public class ResourceConstrainingQueueTest {
      * But it is a really interesting test to run now and again to see how well things operate.
      * @throws Exception
      */
-//    @Test
+    //@Test
     public void testHappyPath() throws Exception {
         long start = System.currentTimeMillis();
         int numProcessors = ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors();
@@ -31,10 +31,10 @@ public class ResourceConstrainingQueueTest {
         final Double CPU_THRESHOLD = 0.9;
         thresholds.put(ResourceMonitor.CPU, CPU_THRESHOLD);
 //        final ResourceMonitor monitor = new CachingResourceMonitor(new AggregateResourceMonitor(new SigarResourceMonitor(), new HeapResourceMonitor(), new LoadAverageResourceMonitor(), new CpuResourceMonitor(), new EWMAMonitor(new CpuResourceMonitor(), 100, TimeUnit.MILLISECONDS)), 100L);
-        final ResourceMonitor monitor = new CachingResourceMonitor(new AggregateResourceMonitor(), 100L);
+//        final ResourceMonitor monitor = new CachingResourceMonitor(new AggregateResourceMonitor(), 100L);
 
-        ThreadPoolExecutor ex = new ThreadPoolExecutor(4 * numProcessors, 4 * numProcessors, 0L, TimeUnit.MILLISECONDS, new ResourceConstrainingQueue<Runnable>(new LinkedBlockingQueue<Runnable>(), new ResourceConstrainingQueue.SimpleResourceConstraintStrategy<Runnable>(monitor, thresholds), 100));
         ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(1);
+        ThreadPoolExecutor ex = new ThreadPoolExecutor(4 * numProcessors, 4 * numProcessors, 0L, TimeUnit.MILLISECONDS, ResourceConstrainingQueues.<Runnable>defaultQueue(thresholds));
         ThreadMonitor threadMonitor = new ThreadMonitor(ex);
         ScheduledFuture future = scheduledExecutorService.scheduleAtFixedRate(threadMonitor, 100, 100, TimeUnit.MILLISECONDS);
 
@@ -148,7 +148,7 @@ public class ResourceConstrainingQueueTest {
         public ThreadMonitor(ThreadPoolExecutor ex) {
             this.ex = ex;
 //            this.resourceMonitor = new AggregateResourceMonitor();
-            this.resourceMonitor = ((ResourceConstrainingQueue.SimpleResourceConstraintStrategy) ((ResourceConstrainingQueue) ex.getQueue()).getConstraintStrategy()).getResourceMonitor();
+            this.resourceMonitor = ((SimpleReactiveConstraintStrategy) ((ResourceConstrainingQueue) ex.getQueue()).getConstraintStrategy()).getResourceMonitor();
         }
 
         @Override
@@ -204,7 +204,7 @@ public class ResourceConstrainingQueueTest {
         }
     }
 
-    private class ConstantConstraintStrategy<T> implements ResourceConstrainingQueue.ConstraintStrategy<T> {
+    private class ConstantConstraintStrategy<T> implements ConstraintStrategy<T> {
         boolean value;
 
         private ConstantConstraintStrategy(boolean value) {

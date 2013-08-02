@@ -1,5 +1,6 @@
 package com.quantumretail.resourcemon;
 
+import com.quantumretail.EWMA;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

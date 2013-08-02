@@ -1,4 +1,4 @@
-package com.quantumretail.collections.constraint;
+package com.quantumretail.constraint;
 
 /**
  * TODO: document me.

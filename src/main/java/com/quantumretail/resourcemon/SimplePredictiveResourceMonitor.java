@@ -1,7 +1,9 @@
 package com.quantumretail.resourcemon;
 
-import com.quantumretail.TaskTracker;
+import com.quantumretail.rcq.predictor.LoadPredictor;
+import com.quantumretail.rcq.predictor.TaskTracker;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
@@ -15,41 +17,30 @@ import java.util.Map;
  * HighestValueAggregateResourceMonitor; that way, you'll be able to react to the predicted load OR real load,
  * whichever is higher.
  */
-public class TaskDictatedResourceMonitor implements ResourceMonitor {
+public class SimplePredictiveResourceMonitor implements ResourceMonitor {
     private final TaskTracker taskTracker;
-    private final double scalingFactor;
+    private final LoadPredictor loadPredictor;
 
-    public TaskDictatedResourceMonitor(TaskTracker taskTracker) {
-        this(taskTracker, 1.0);
-    }
 
-    public TaskDictatedResourceMonitor(TaskTracker taskTracker, double scalingFactor) {
+    public SimplePredictiveResourceMonitor(TaskTracker taskTracker, LoadPredictor loadPredictor) {
         this.taskTracker = taskTracker;
-        this.scalingFactor = scalingFactor;
+        this.loadPredictor = loadPredictor;
     }
 
 
     @Override
     public Map<String, Double> getLoad() {
         // get a list of what is currently executing
-        final Collection<Map<String, Double>> tasks = taskTracker.getCurrentlyExecutingTasks();
-        // sum up what is currently executing and apply the scaling factor to it.
-        return applyScalingFactor(sumTasks(tasks), getScalingFactor());
+        final Collection<Object> tasks = taskTracker.currentTasks();
+        return predictLoadForTasks(tasks);
     }
 
-    /**
-     * Note that, for performance reasons, we may mutate the input map in-place rather than making a copy.
-     * We call this method a lot, and it's an internal method, so it's worth it.
-     * @param inputMap MAY BE MUTATED
-     * @return
-     */
-    protected Map<String, Double> applyScalingFactor(Map<String, Double> inputMap, double scalingFactor) {
-        if (scalingFactor != 0 && scalingFactor != 1.0) {
-            for (Map.Entry<String, Double> s : inputMap.entrySet()) {
-                inputMap.put(s.getKey(), (s.getValue() / scalingFactor));
-            }
+    private Map<String, Double> predictLoadForTasks(Collection<Object> tasks) {
+        Collection<Map<String, Double>> taskLoads = new ArrayList<Map<String, Double>>(tasks.size());
+        for (Object task : tasks) {
+            taskLoads.add(loadPredictor.predictLoad(task));
         }
-        return inputMap;
+        return sumTasks(taskLoads);
     }
 
     private Map<String, Double> sumTasks(Collection<Map<String, Double>> tasks) {
@@ -68,7 +59,7 @@ public class TaskDictatedResourceMonitor implements ResourceMonitor {
         return load;
     }
 
-    public double getScalingFactor() {
-        return scalingFactor;
+    public TaskTracker getTaskTracker() {
+        return taskTracker;
     }
 }

@@ -1,13 +1,15 @@
 package com.quantumretail.collections;
 
-import com.quantumretail.resourcemon.AggregateResourceMonitor;
-import com.quantumretail.resourcemon.CachingResourceMonitor;
-import com.quantumretail.resourcemon.ResourceMonitor;
+import com.quantumretail.constraint.ConstraintStrategies;
+import com.quantumretail.constraint.ConstraintStrategy;
+import com.quantumretail.rcq.predictor.TaskTracker;
+import com.quantumretail.rcq.predictor.TaskTrackers;
 
 import java.util.Collection;
 import java.util.Iterator;
-import java.util.Map;
-import java.util.concurrent.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Note that this resource-constraining behavior ONLY occurs on {@link #poll()} and {@link #remove()}. Other access methods
@@ -31,6 +33,7 @@ import java.util.concurrent.*;
  *
  */
 public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
+
     public static <T> ResourceConstrainingQueueBuilder<T> builder() {
         return new ResourceConstrainingQueueBuilder<T>();
     }
@@ -42,19 +45,38 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
 
     final ConstraintStrategy<T> constraintStrategy;
 
+    final TaskTracker<T> taskTracker;
+
     /**
      * Build a ResourceConstrainingQueue using all default options.
      * If you want to override some defaults, but not all, use the ResourceConstrainingQueueBuilder; it's much easier.
      */
     public ResourceConstrainingQueue() {
-        this(new LinkedBlockingQueue<T>(), new SimpleResourceConstraintStrategy<T>(new CachingResourceMonitor(new AggregateResourceMonitor(), DEFAULT_POLL_FREQ), defaultThresholds()), DEFAULT_POLL_FREQ);
+        this(new LinkedBlockingQueue<T>(), TaskTrackers.<T>defaultTaskTracker(), DEFAULT_POLL_FREQ);
     }
 
+    public ResourceConstrainingQueue(LinkedBlockingQueue<T> delegate, TaskTracker<T> taskTracker, long defaultPollFreq) {
+        this(delegate, ConstraintStrategies.defaultConstraintStrategy(taskTracker), defaultPollFreq, taskTracker);
+    }
+
+
     public ResourceConstrainingQueue(BlockingQueue<T> delegate, ConstraintStrategy<T> constraintStrategy, long retryFrequencyMS) {
+        this(delegate, constraintStrategy, retryFrequencyMS, null);
+    }
+
+    public ResourceConstrainingQueue(BlockingQueue<T> delegate, ConstraintStrategy<T> constraintStrategy, long retryFrequencyMS, TaskTracker<T> taskTracker) {
         this.delegate = delegate;
         this.retryFrequencyMS = retryFrequencyMS;
         this.constraintStrategy = constraintStrategy;
+        this.taskTracker = taskTracker;
+    }
 
+    protected T trackIfNecessary(T item) {
+        if (taskTracker != null) {
+            return taskTracker.register(item);
+        } else {
+            return item;
+        }
     }
 
     public boolean add(T t) {
@@ -89,7 +111,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
             if (nextItem == null || shouldReturn(nextItem)) {
                 // Note that we might be returning a *different item* than nextItem if we have multiple threads accessing this concurrently!
                 // We're intentionally taking that risk to avoid locking.
-                return delegate.remove();
+                return trackIfNecessary(delegate.remove());
             } else {
                 return null; // sleep? block?
             }
@@ -124,7 +146,8 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
         if (nextItem == null || shouldReturn(nextItem)) {
             // Note that we might be returning a *different item* than nextItem if we have multiple threads accessing this concurrently!
             // We're intentionally taking that risk to avoid locking.
-            return delegate.poll();
+            return trackIfNecessary(delegate.poll());
+
         } else {
             return null;  // sleep? block?
         }
@@ -144,7 +167,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
             if (shouldReturn(nextItem)) {
                 // Note that we might be returning a *different item* than nextItem if we have multiple threads accessing this concurrently!
                 // We're intentionally taking that risk to avoid locking.
-                return delegate.take();
+                return trackIfNecessary(delegate.take());
             } else {
                 sleep();
             }
@@ -176,7 +199,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
             if (shouldReturn(nextItem)) {
                 // Note that we might be returning a *different item* than nextItem if we have multiple threads accessing this concurrently!
                 // We're intentionally taking that risk to avoid locking.
-                return delegate.poll(timeoutNanos - totalSleepNanos, TimeUnit.NANOSECONDS);
+                return trackIfNecessary(delegate.poll(timeoutNanos - totalSleepNanos, TimeUnit.NANOSECONDS));
             } else {
                 sleep();
                 totalSleepNanos = System.nanoTime() - startNanos;
@@ -385,22 +408,20 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
         return constraintStrategy;
     }
 
-    protected static Map<String, Double> defaultThresholds() {
-        Map<String, Double> t;
-        t = new ConcurrentHashMap<String, Double>();
-        t.put(ResourceMonitor.CPU, 0.95);
-        t.put(ResourceMonitor.HEAP_MEM, 0.90);
-        return t;
-    }
-
 
     public static class ResourceConstrainingQueueBuilder<T> {
         BlockingQueue<T> builderdelegate = null;
         private long builderresourcePollFrequencyMS = DEFAULT_POLL_FREQ;
         ConstraintStrategy<T> builderConstraintStrategy;
+        TaskTracker<T> builderTaskTracker;
 
         public ResourceConstrainingQueueBuilder<T> withConstraintStrategy(ConstraintStrategy<T> cs) {
             this.builderConstraintStrategy = cs;
+            return this;
+        }
+
+        public ResourceConstrainingQueueBuilder<T> withTaskTracker(TaskTracker<T> tt) {
+            this.builderTaskTracker = tt;
             return this;
         }
 
@@ -419,7 +440,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
             long pollfreq = builderresourcePollFrequencyMS;
             ConstraintStrategy<T> cs = builderConstraintStrategy;
             if (cs == null) {
-                cs = new SimpleResourceConstraintStrategy<T>(new CachingResourceMonitor(new AggregateResourceMonitor(), DEFAULT_POLL_FREQ), defaultThresholds());
+                cs = ConstraintStrategies.defaultReactiveConstraintStrategy(pollfreq);
             }
             if (d == null) {
                 d = new LinkedBlockingQueue<T>();
@@ -429,64 +450,4 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T> {
 
     }
 
-    public static interface ConstraintStrategy<T> {
-
-        /**
-         * Returns true if we should return this item -- implicitly, "do we have resources for this item?"
-         * The implementation may choose to ignore the parameter entirely.
-         *
-         * @param nextItem
-         * @return
-         */
-        public boolean shouldReturn(T nextItem);
-    }
-
-    public static class SimpleResourceConstraintStrategy<T> implements ConstraintStrategy<T> {
-        private final ConcurrentMap<String, Double> thresholds;
-        private final ResourceMonitor resourceMonitor;
-
-        public SimpleResourceConstraintStrategy(ResourceMonitor resourceMonitor, Map<String, Double> thresholds) {
-            this.resourceMonitor = resourceMonitor;
-
-            // we allow thresholds to be updated, so it should be a concurrent map.
-            if (thresholds instanceof ConcurrentMap) {
-                this.thresholds = (ConcurrentMap<String, Double>) thresholds;
-            } else {
-                this.thresholds = new ConcurrentHashMap<String, Double>(thresholds);
-            }
-        }
-
-        @Override
-        public boolean shouldReturn(T nextItem) {
-
-            // get current load from resourceMonitor
-            Map<String, Double> load = resourceMonitor.getLoad();
-
-            /*
-            if taskTracker != null
-                get current # of tasks from taskTracker
-                calculate load-per-task-point
-                add this task's points. Does that put us past the threshold?
-            else
-                is current load past the threshold?
-             */
-            for (Map.Entry<String, Double> t : thresholds.entrySet()) {
-                if (load.containsKey(t.getKey())) {
-                    if (load.get(t.getKey()) > t.getValue()) {
-                        return false;
-                    }
-                }
-            }
-
-            return true;
-        }
-
-        public ResourceMonitor getResourceMonitor() {
-            return resourceMonitor;
-        }
-
-        public ConcurrentMap<String, Double> getThresholds() {
-            return thresholds;
-        }
-    }
 }

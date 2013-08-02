@@ -1,5 +1,6 @@
 package com.quantumretail.resourcemon;
 
+import com.quantumretail.EWMA;
 import org.junit.Test;
 
 import java.util.Map;
@@ -184,24 +185,6 @@ public class EWMAMonitorTest {
         load = monitor.getLoad();
         assertEquals(10.0, load.get("CPU"), DELTA);
         assertEquals(3, load.get("MEM"), DELTA);
-    }
-
-    @Test
-    public void test_calc_alpha() throws Exception {
-        double val = EWMA.alpha(6584875, TimeUnit.SECONDS.toNanos(1));
-        assertEquals(1.0, val, DELTA);
-    }
-
-    @Test
-    public void test_calc_alpha_short_halflife() throws Exception {
-        double val = EWMA.alpha(1, TimeUnit.SECONDS.toMillis(3));
-        assertEquals(1.0, val, DELTA);
-    }
-
-    @Test
-    public void test_calc_alpha_long_halflife() throws Exception {
-        double val = EWMA.alpha(TimeUnit.DAYS.toMillis(1), TimeUnit.SECONDS.toMillis(3));
-        assertEquals(0.000024, val, DELTA);
     }
 
     public static class TestClock implements EWMA.Clock {

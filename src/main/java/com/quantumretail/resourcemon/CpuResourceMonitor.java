@@ -7,6 +7,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * There's a lot of ugly code here, because CPU usage isn't available in a standard way.
@@ -23,6 +24,7 @@ import java.util.Map;
  */
 public class CpuResourceMonitor implements ResourceMonitor {
 
+    private static final long MIN_UPDATE_TIME = TimeUnit.MILLISECONDS.toNanos(10);
     final OperatingSystemMXBean operatingSystemMXBean;
     final RuntimeMXBean runtimeMXBean;
 
@@ -30,16 +32,14 @@ public class CpuResourceMonitor implements ResourceMonitor {
     boolean procTime;
     boolean procStatFile;
 
-    long prevProcessTimestamp = 0L;
-    long prevProcessCpuTime = 0L;
-    double prevCPU = 0.0;
+    ProcessCpuTime lastProcessCpuReading;
 
 
     /**
      *
      */
     public CpuResourceMonitor() {
-        this(true, false); // proctime is false by default -- not yet working
+        this(true, true); // proctime is false by default -- not yet working
     }
 
     /**
@@ -56,8 +56,7 @@ public class CpuResourceMonitor implements ResourceMonitor {
         if (tryProcTimeMethod) {
             try {
                 // "prime the pump" for the procTime method.
-                this.prevProcessTimestamp = System.nanoTime();
-                this.prevProcessCpuTime = getProcessCPUTime();
+                this.lastProcessCpuReading = new ProcessCpuTime(getProcessCPUTime(), System.nanoTime(), -1.0);
             } catch (Throwable t) {
                 // ignore; we'll set this flag back to false the first time we run getCPU();
             }
@@ -94,14 +93,14 @@ public class CpuResourceMonitor implements ResourceMonitor {
 //            }
 //        }
         if (procTime) {
-            //TODO: this code is broken! Needs to be fixed.
             try {
                 long currentTimeNanos = System.nanoTime();
                 Long processCpuTime = getProcessCPUTime();
                 if (processCpuTime != null && processCpuTime >= 0.0) {
                     // note that this is getting process CPU time, not system CPU time.  Those are quite different things -- this is just CPU usage for this process, not the whole system. But that's all we have access to via this method.
-                    Double cpu = getProcessTime(currentTimeNanos, processCpuTime, prevProcessTimestamp, prevProcessCpuTime, operatingSystemMXBean.getAvailableProcessors());
-                    if (cpu != null) return cpu;
+                    ProcessCpuTime pct = getProcessTime(currentTimeNanos, processCpuTime, lastProcessCpuReading, operatingSystemMXBean.getAvailableProcessors());
+                    this.lastProcessCpuReading = pct;
+                    if (pct != null && pct.cpuLoad >= 0) return pct.cpuLoad;
                 }
 
             } catch (Throwable t) {
@@ -112,17 +111,34 @@ public class CpuResourceMonitor implements ResourceMonitor {
         return null;
     }
 
-    private Double getSunMethod() throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
-        Method m = operatingSystemMXBean.getClass().getMethod("getSystemCpuLoad");
-        Double d = (Double) m.invoke(operatingSystemMXBean);
-        if (d == null || d.isNaN() || d <= 0.0) {
-            m = operatingSystemMXBean.getClass().getMethod("getProcessCpuLoad");
-            d = (Double) m.invoke(operatingSystemMXBean);
+    private Method cpuLoadMethod = null;
+
+    protected Double getSunMethod() throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+        if (cpuLoadMethod == null) {
+            Method m = operatingSystemMXBean.getClass().getMethod("getSystemCpuLoad");
+            m.setAccessible(true);
+            Double d = (Double) m.invoke(operatingSystemMXBean);
+            if (d == null || d.isNaN() || d <= 0.0) {
+                m = operatingSystemMXBean.getClass().getMethod("getProcessCpuLoad");
+                m.setAccessible(true);
+                d = (Double) m.invoke(operatingSystemMXBean);
+            }
+            if (d != null && !d.isNaN() && d >= 0.0) {
+                cpuLoadMethod = m;
+                if (d > 1) d = 1.0;
+                return d;
+            } else {
+                return null;
+            }
+        } else {
+            Double d = (Double) cpuLoadMethod.invoke(operatingSystemMXBean);
+            if (d != null && !d.isNaN() && d >= 0.0) {
+                if (d > 1) d = 1.0;
+                return d;
+            } else {
+                return null;
+            }
         }
-        if (d != null && !d.isNaN() && d >= 0.0) {
-            if (d > 1) d = 1.0;
-            return d;
-        } else return null;
     }
 
     private Long getProcessCPUTime() throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
@@ -138,41 +154,47 @@ public class CpuResourceMonitor implements ResourceMonitor {
     }
 
     /**
-     * Note that this method has side effects: it updates the prev* instance fields.
      * @param currentTimeNanos the current time
      * @param processCpuTime the amount of CPU time, in nanos, that this process has consumed.
-     * @param prevProcessTimestamp the timestamp (in nanos) of the last reading
-     * @param prevProcessCpuTime the amount of CPU time, in nanos, that this process had consumed last time this method was called.
+     * @param previousReading the result of the last call
      * @param numProcessors the number of processors in this system.
      * @return
      * @throws NoSuchMethodException
      * @throws InvocationTargetException
      * @throws IllegalAccessException
      */
-    protected Double getProcessTime(long currentTimeNanos, long processCpuTime, long prevProcessTimestamp, long prevProcessCpuTime, int numProcessors) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+    protected ProcessCpuTime getProcessTime(long currentTimeNanos, long processCpuTime, ProcessCpuTime previousReading, int numProcessors) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
 
-        if (currentTimeNanos > prevProcessTimestamp) {
-            if (prevProcessCpuTime > 0) {
-                long elapsedCpuNanos = processCpuTime - prevProcessCpuTime;
-                long elapsedTimeNanos = currentTimeNanos - prevProcessTimestamp;
-                double cpu = elapsedCpuNanos / elapsedTimeNanos;
+        if (currentTimeNanos > (previousReading.timestampNanos + MIN_UPDATE_TIME)) {  // if it's too close, there's no point in getting another reading.
+            if (previousReading.processCpuTimeNanos > 0) {
+                long elapsedCpuNanos = processCpuTime - previousReading.processCpuTimeNanos;
+                long elapsedTimeNanos = currentTimeNanos - previousReading.timestampNanos;
+                double cpu = elapsedCpuNanos / (elapsedTimeNanos * numProcessors);
 
-                this.prevCPU = cpu;
-                this.prevProcessCpuTime = processCpuTime;
-                this.prevProcessTimestamp = currentTimeNanos;
-                return cpu;
+                return new ProcessCpuTime(processCpuTime, currentTimeNanos, cpu);
+
             } else {
                 // the first time we call this, processCpuTime won't be available
-                this.prevProcessCpuTime = processCpuTime;
-                this.prevProcessTimestamp = currentTimeNanos;
-                return null;
+                return new ProcessCpuTime(processCpuTime, currentTimeNanos, -1);
             }
-        } else if (prevCPU > 0) {
-            return prevCPU;
         } else {
-            return null;
+            return previousReading;
         }
     }
 
 
+    protected static class ProcessCpuTime {
+
+        final long processCpuTimeNanos;
+        final long timestampNanos;
+        final double cpuLoad;
+
+        protected ProcessCpuTime(long processCpuTimeNanos, long timestampNanos, double cpuLoad) {
+            this.processCpuTimeNanos = processCpuTimeNanos;
+            this.timestampNanos = timestampNanos;
+            this.cpuLoad = cpuLoad;
+        }
+    }
+
 }
+

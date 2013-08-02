@@ -5,7 +5,6 @@ import org.junit.Test;
 import java.lang.management.ManagementFactory;
 
 import static junit.framework.Assert.assertEquals;
-import static junit.framework.Assert.assertNull;
 import static org.junit.Assert.assertNotNull;
 
 /**
@@ -39,22 +38,32 @@ public class CpuResourceMonitorTest {
         Double cpu = monitor.getCPU();
         System.out.println("CPU is " + cpu + ", while our random number is " + random);
         assertNotNull(cpu);
+        // uncomment when this is working:
+//        assertTrue("CPU should have been something > 0.0", cpu > 0.0);
     }
 
     @Test
     public void test_getProcessTime_edges() throws Exception {
         CpuResourceMonitor monitor = new CpuResourceMonitor(false, true);
-        Double value = monitor.getProcessTime(1, 1, 0, 0, 1);
-        assertNull(value); // we don't return anything if the prev* values are null.
+        CpuResourceMonitor.ProcessCpuTime prev = new CpuResourceMonitor.ProcessCpuTime(0, 0, -1);
+        CpuResourceMonitor.ProcessCpuTime value = monitor.getProcessTime(1, 1, prev, 1);
+        assertEquals(prev, value);
 
-        value = monitor.getProcessTime(1, 1, 1, 1, 1);
-        assertNull(value); // we still don't have enough to go by to return a valid value -- we don't have 2 unique measurements.
+        prev = new CpuResourceMonitor.ProcessCpuTime(1, 1, -1);
+        value = monitor.getProcessTime(1, 1, prev, 1);
+        assertEquals(prev, value); // we still don't have enough to go by to return a valid value -- we don't have 2 unique measurements.
 
-        value = monitor.getProcessTime(2, 2, 1, 1, 1);
-        assertEquals(1.0, value, DELTA);
+        value = monitor.getProcessTime(2, 2, prev, 1);
+        assertEquals(prev, value); // we still don't have enough to go by to return a valid value -- measurements are within 10 milliseconds
+
+        long later = 20000001;
+        value = monitor.getProcessTime(later, later, prev, 1);
+        assertEquals(later, value.processCpuTimeNanos);
+        assertEquals(later, value.timestampNanos);
+        assertEquals(1.0, value.cpuLoad, DELTA);
 
         // now calling it again where current = prev should return the previous reading.
-        value = monitor.getProcessTime(2, 5, 2, 2, 1);
-        assertEquals(1.0, value, DELTA);
+        CpuResourceMonitor.ProcessCpuTime value2 = monitor.getProcessTime(2, 5, value, 1);
+        assertEquals(value, value2);
     }
 }

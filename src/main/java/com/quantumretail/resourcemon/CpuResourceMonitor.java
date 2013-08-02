@@ -112,10 +112,12 @@ public class CpuResourceMonitor implements ResourceMonitor {
         return null;
     }
 
-    private Double getSunMethod() {
-        Double d = ((com.sun.management.OperatingSystemMXBean) operatingSystemMXBean).getSystemCpuLoad();
+    private Double getSunMethod() throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+        Method m = operatingSystemMXBean.getClass().getMethod("getSystemCpuLoad");
+        Double d = (Double) m.invoke(operatingSystemMXBean);
         if (d == null || d.isNaN() || d <= 0.0) {
-            d = ((com.sun.management.OperatingSystemMXBean) operatingSystemMXBean).getProcessCpuLoad();
+            m = operatingSystemMXBean.getClass().getMethod("getProcessCpuLoad");
+            d = (Double) m.invoke(operatingSystemMXBean);
         }
         if (d != null && !d.isNaN() && d >= 0.0) {
             if (d > 1) d = 1.0;

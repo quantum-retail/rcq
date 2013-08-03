@@ -33,6 +33,7 @@ public class ResourceConstrainingQueues {
         return new ResourceConstrainingQueue<T>(new LinkedBlockingQueue<T>(),
                 ConstraintStrategies.defaultCombinedConstraintStrategyWithFeedbackThread(thresholds, taskTracker, feedbackThread),
                 ResourceMonitors.DEFAULT_UPDATE_FREQ,
+                true,
                 taskTracker);
     }
 
@@ -43,6 +44,7 @@ public class ResourceConstrainingQueues {
                 new LinkedBlockingQueue<T>(),
                 ConstraintStrategies.defaultConstraintStrategy(thresholds, taskTracker),
                 ResourceMonitors.DEFAULT_UPDATE_FREQ,
+                true,
                 taskTracker);
     }
 
@@ -64,15 +66,12 @@ public class ResourceConstrainingQueues {
 
         NameableDaemonThreadFactory(String namePrefix) {
             SecurityManager s = System.getSecurityManager();
-            group = (s != null) ? s.getThreadGroup() :
-                    Thread.currentThread().getThreadGroup();
+            group = (s != null) ? s.getThreadGroup() : Thread.currentThread().getThreadGroup();
             this.namePrefix = namePrefix;
         }
 
         public Thread newThread(Runnable r) {
-            Thread t = new Thread(group, r,
-                    namePrefix + threadNumber.getAndIncrement(),
-                    0);
+            Thread t = new Thread(group, r, namePrefix + threadNumber.getAndIncrement(), 0);
             t.setDaemon(true);
             if (t.getPriority() != Thread.NORM_PRIORITY)
                 t.setPriority(Thread.NORM_PRIORITY);

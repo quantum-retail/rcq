@@ -17,6 +17,8 @@ import java.util.Iterator;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Note that this resource-constraining behavior ONLY occurs on {@link #poll()} and {@link #remove()}. Other access methods
@@ -35,8 +37,7 @@ import java.util.concurrent.TimeUnit;
  *    weighted moving average of task-to-resource-utilization.
  *  - ???
  *
- * TODO: take in a parameter to indicate "strict vs. approximate" -- strict would use blocking in remove(), poll() and take(),
- * while approximate would keep the current non-blocking (but slightly less accurate) behavior.
+ * If strict = true, we'll use blocking in remove(), poll() and take(). Otherwise, we'll use a non-blocking (but slightly less accurate) behavior.
  *
  */
 public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAware {
@@ -60,6 +61,10 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
     private Counter pendingItems = null;
     private Meter sleeps = null;
 
+    final private boolean strict;
+    // this is the lock we'll use if strict = true.
+    Lock takeLock = new ReentrantLock();
+
     /**
      * Build a ResourceConstrainingQueue using all default options.
      * If you want to override some defaults, but not all, use the ResourceConstrainingQueueBuilder; it's much easier.
@@ -68,20 +73,21 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
         this(new LinkedBlockingQueue<T>(), TaskTrackers.<T>defaultTaskTracker(), DEFAULT_POLL_FREQ);
     }
 
-    public ResourceConstrainingQueue(LinkedBlockingQueue<T> delegate, TaskTracker<T> taskTracker, long defaultPollFreq) {
-        this(delegate, ConstraintStrategies.defaultConstraintStrategy(taskTracker), defaultPollFreq, taskTracker);
+    public ResourceConstrainingQueue(BlockingQueue<T> delegate, TaskTracker<T> taskTracker, long defaultPollFreq) {
+        this(delegate, ConstraintStrategies.defaultConstraintStrategy(taskTracker), defaultPollFreq, true, taskTracker);
     }
 
 
-    public ResourceConstrainingQueue(BlockingQueue<T> delegate, ConstraintStrategy<T> constraintStrategy, long retryFrequencyMS) {
-        this(delegate, constraintStrategy, retryFrequencyMS, null);
+    public ResourceConstrainingQueue(BlockingQueue<T> delegate, ConstraintStrategy<T> constraintStrategy, long retryFrequencyMS, boolean strict) {
+        this(delegate, constraintStrategy, retryFrequencyMS, strict, null);
     }
 
-    public ResourceConstrainingQueue(BlockingQueue<T> delegate, ConstraintStrategy<T> constraintStrategy, long retryFrequencyMS, TaskTracker<T> taskTracker) {
+    public ResourceConstrainingQueue(BlockingQueue<T> delegate, ConstraintStrategy<T> constraintStrategy, long retryFrequencyMS, boolean strict, TaskTracker<T> taskTracker) {
         this.delegate = delegate;
         this.retryFrequencyMS = retryFrequencyMS;
         this.constraintStrategy = constraintStrategy;
         this.taskTracker = taskTracker;
+        this.strict = strict;
     }
 
     protected T trackIfNecessary(T item) {
@@ -100,22 +106,21 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
     }
 
     public boolean add(T t) {
-        if (pendingItems != null) {
-            pendingItems.inc();
-        }
-        if (additions != null) {
-            additions.mark();
-        }
+        markAddition();
         return delegate.add(t);
     }
 
-    public boolean offer(T t) {
+    private void markAddition() {
         if (pendingItems != null) {
             pendingItems.inc();
         }
         if (additions != null) {
             additions.mark();
         }
+    }
+
+    public boolean offer(T t) {
+        markAddition();
         return delegate.offer(t);
     }
 
@@ -139,15 +144,29 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
     @Override
     public T remove() {
         while (true) {
-            T nextItem = delegate.peek();
-            if (nextItem == null || shouldReturn(nextItem)) {
-                // Note that we might be returning a *different item* than nextItem if we have multiple threads accessing this concurrently!
-                // We're intentionally taking that risk to avoid locking.
-                return trackIfNecessary(delegate.remove());
-            } else {
-                return null; // sleep? block?
+            boolean locking = shouldLock();
+            try {
+                if (locking) {
+                    takeLock.lock();
+                }
+                T nextItem = delegate.peek();
+                if (nextItem == null || shouldReturn(nextItem)) {
+                    // Note that we might be returning a *different item* than nextItem if we have multiple threads accessing this concurrently!
+                    // We're intentionally taking that risk to avoid locking.
+                    return trackIfNecessary(delegate.remove());
+                } else {
+                    return null; // sleep? block?
+                }
+            } finally {
+                if (locking) {
+                    takeLock.unlock();
+                }
             }
         }
+    }
+
+    protected boolean shouldLock() {
+        return strict && taskTracker != null;
     }
 
     protected boolean shouldReturn(T nextItem) {
@@ -183,14 +202,24 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
      */
     @Override
     public T poll() {
-        T nextItem = delegate.peek();
-        if (nextItem == null || shouldReturn(nextItem)) {
-            // Note that we might be returning a *different item* than nextItem if we have multiple threads accessing this concurrently!
-            // We're intentionally taking that risk to avoid locking.
-            return trackIfNecessary(delegate.poll());
+        boolean locking = shouldLock();
+        try {
+            if (locking) {
+                takeLock.lock();
+            }
+            T nextItem = delegate.peek();
+            if (nextItem == null || shouldReturn(nextItem)) {
+                // Note that we might be returning a *different item* than nextItem if we have multiple threads accessing this concurrently!
+                // We're intentionally taking that risk to avoid locking.
+                return trackIfNecessary(delegate.poll());
 
-        } else {
-            return null;  // sleep? block?
+            } else {
+                return null;  // sleep? block?
+            }
+        } finally {
+            if (locking) {
+                takeLock.unlock();
+            }
         }
     }
 
@@ -203,14 +232,24 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
      */
     @Override
     public T take() throws InterruptedException {
-        while (true) {
-            T nextItem = delegate.peek();
-            if (shouldReturn(nextItem)) {
-                // Note that we might be returning a *different item* than nextItem if we have multiple threads accessing this concurrently!
-                // We're intentionally taking that risk to avoid locking.
-                return trackIfNecessary(delegate.take());
-            } else {
-                sleep();
+        boolean locking = shouldLock();
+        try {
+            if (locking) {
+                takeLock.lock();
+            }
+            while (true) {
+                T nextItem = delegate.peek();
+                if (shouldReturn(nextItem)) {
+                    // Note that we might be returning a *different item* than nextItem if we have multiple threads accessing this concurrently!
+                    // We're intentionally taking that risk to avoid locking.
+                    return trackIfNecessary(delegate.take());
+                } else {
+                    sleep();
+                }
+            }
+        } finally {
+            if (locking) {
+                takeLock.unlock();
             }
         }
     }
@@ -239,15 +278,26 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
         long startNanos = System.nanoTime();
         long timeoutNanos = unit.toNanos(timeout);
         while (totalSleepNanos > timeoutNanos) {
-            T nextItem = delegate.peek();
-            if (shouldReturn(nextItem)) {
-                // Note that we might be returning a *different item* than nextItem if we have multiple threads accessing this concurrently!
-                // We're intentionally taking that risk to avoid locking.
-                return trackIfNecessary(delegate.poll(timeoutNanos - totalSleepNanos, TimeUnit.NANOSECONDS));
-            } else {
-                sleep();
-                totalSleepNanos = System.nanoTime() - startNanos;
+            boolean locking = shouldLock();
+            try {
+                if (locking) {
+                    takeLock.lock();
+                }
+                T nextItem = delegate.peek();
+                if (shouldReturn(nextItem)) {
+                    // Note that we might be returning a *different item* than nextItem if we have multiple threads accessing this concurrently!
+                    // We're intentionally taking that risk to avoid locking.
+                    return trackIfNecessary(delegate.poll(timeoutNanos - totalSleepNanos, TimeUnit.NANOSECONDS));
+                } else {
+                    sleep();
+                    totalSleepNanos = System.nanoTime() - startNanos;
+                }
+            } finally {
+                if (locking) {
+                    takeLock.unlock();
+                }
             }
+
         }
         // if we got here, we timed out.
         return null;
@@ -446,12 +496,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
      * @throws InterruptedException
      */
     public void put(T t) throws InterruptedException {
-        if (pendingItems != null) {
-            pendingItems.inc();
-        }
-        if (additions != null) {
-            additions.mark();
-        }
+        markAddition();
         delegate.put(t);
     }
 
@@ -464,12 +509,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
      * @throws InterruptedException
      */
     public boolean offer(T t, long timeout, TimeUnit unit) throws InterruptedException {
-        if (pendingItems != null) {
-            pendingItems.inc();
-        }
-        if (additions != null) {
-            additions.mark();
-        }
+        markAddition();
         return delegate.offer(t, timeout, unit);
     }
 
@@ -518,6 +558,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
         private long builderresourcePollFrequencyMS = DEFAULT_POLL_FREQ;
         ConstraintStrategy<T> builderConstraintStrategy;
         TaskTracker<T> builderTaskTracker;
+        boolean builderStrict = true;
 
         public ResourceConstrainingQueueBuilder<T> withConstraintStrategy(ConstraintStrategy<T> cs) {
             this.builderConstraintStrategy = cs;
@@ -539,6 +580,11 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
             return this;
         }
 
+        public ResourceConstrainingQueueBuilder<T> strict(boolean strict) {
+            this.builderStrict = strict;
+            return this;
+        }
+
         public ResourceConstrainingQueue<T> build() {
             BlockingQueue<T> d = builderdelegate;
             long pollfreq = builderresourcePollFrequencyMS;
@@ -549,7 +595,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
             if (d == null) {
                 d = new LinkedBlockingQueue<T>();
             }
-            return new ResourceConstrainingQueue<T>(d, cs, pollfreq);
+            return new ResourceConstrainingQueue<T>(d, cs, pollfreq, builderStrict);
         }
 
     }

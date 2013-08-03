@@ -31,26 +31,27 @@ public class ResourceConstrainingQueueTest {
      * But it is a really interesting test to run now and again to see how well things operate.
      * @throws Exception
      */
-//    @Test
+    @Test
     public void test_long_running() throws Exception {
         long start = System.currentTimeMillis();
         int numProcessors = ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors();
         Map<String, Double> thresholds = new HashMap<String, Double>();
         final Double CPU_THRESHOLD = 0.9;
         thresholds.put(ResourceMonitor.CPU, CPU_THRESHOLD);
-//        final ResourceMonitor monitor = new CachingResourceMonitor(new AggregateResourceMonitor(new SigarResourceMonitor(), new HeapResourceMonitor(), new LoadAverageResourceMonitor(), new CpuResourceMonitor(), new EWMAMonitor(new CpuResourceMonitor(), 100, TimeUnit.MILLISECONDS)), 100L);
-//        final ResourceMonitor monitor = new CachingResourceMonitor(new AggregateResourceMonitor(), 100L);
+        // final ResourceMonitor monitor = new CachingResourceMonitor(new AggregateResourceMonitor(new SigarResourceMonitor(), new HeapResourceMonitor(), new LoadAverageResourceMonitor(), new CpuResourceMonitor(), new EWMAMonitor(new CpuResourceMonitor(), 100, TimeUnit.MILLISECONDS)), 100L);
+        // final ResourceMonitor monitor = new CachingResourceMonitor(new AggregateResourceMonitor(), 100L);
         MetricRegistry metricRegistry = new MetricRegistry();
 
         ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(2, new ResourceConstrainingQueues.NameableDaemonThreadFactory("thread-monitor-"));
-//        ResourceConstrainingQueue<Runnable> queue = new ResourceConstrainingQueue<Runnable>(new LinkedBlockingQueue<Runnable>(), ConstraintStrategies.<Runnable>defaultReactiveConstraintStrategy(thresholds, 100), 100);
-//        ResourceConstrainingQueue<Runnable> queue = ResourceConstrainingQueues.defaultQueue(thresholds);
+        // ResourceConstrainingQueue<Runnable> queue = new ResourceConstrainingQueue<Runnable>(new LinkedBlockingQueue<Runnable>(), ConstraintStrategies.<Runnable>defaultReactiveConstraintStrategy(thresholds, 100), 100);
+        // ResourceConstrainingQueue<Runnable> queue = ResourceConstrainingQueues.defaultQueue(thresholds);
 
         TaskTracker<Runnable> taskTracker = TaskTrackers.defaultTaskTracker();
         ResourceConstrainingQueue<Runnable> queue = new ResourceConstrainingQueue<Runnable>(
                 new LinkedBlockingQueue<Runnable>(),
                 createConstraintStrategies(thresholds, taskTracker, scheduledExecutorService),
                 ResourceMonitors.DEFAULT_UPDATE_FREQ,
+                true,
                 taskTracker);
 
         queue.registerMetrics(metricRegistry, "queue");
@@ -59,7 +60,7 @@ public class ResourceConstrainingQueueTest {
 
         // send in the metricsRegistry if you want a super-verbose view of what's going on:
         ThreadMonitor threadMonitor = new ThreadMonitor(ex, null);
-//        ThreadMonitor threadMonitor = new ThreadMonitor(ex, metricRegistry);
+        // ThreadMonitor threadMonitor = new ThreadMonitor(ex, metricRegistry);
 
         ScheduledFuture future = scheduledExecutorService.scheduleAtFixedRate(threadMonitor, 100, 100, TimeUnit.MILLISECONDS);
 
@@ -74,6 +75,14 @@ public class ResourceConstrainingQueueTest {
         long runtime = System.currentTimeMillis() - start;
         System.out.println("Finished in " + runtime + " ms");
 
+        printStatistics(CPU_THRESHOLD, threadMonitor);
+
+        future.cancel(true);
+        scheduledExecutorService.shutdown();
+        ex.shutdown();
+    }
+
+    private void printStatistics(Double CPU_THRESHOLD, ThreadMonitor threadMonitor) {
         System.out.println("\n****");
         System.out.println("Average active threads: " + threadMonitor.getAverageActiveThreads());
         System.out.println("Max active threads: " + threadMonitor.getMaxActiveThreads());
@@ -87,10 +96,6 @@ public class ResourceConstrainingQueueTest {
         double maxThreshold = CPU_THRESHOLD + 0.03; // we can drift slightly over CPU_THRESHOLD, since we stop handing out tasks only after we cross it
         assertTrue("Expected average CPU usage to be between " + minThreshold + " and " + maxThreshold + " (with a threshold of " + CPU_THRESHOLD + ") but it was " + threadMonitor.getAverageCPU(), threadMonitor.getAverageCPU() <= maxThreshold);
         assertTrue("Expected average CPU usage to be between " + minThreshold + " and " + maxThreshold + " (with a threshold of " + CPU_THRESHOLD + ") but it was " + threadMonitor.getAverageCPU(), threadMonitor.getAverageCPU() >= minThreshold);
-
-        future.cancel(true);
-        scheduledExecutorService.shutdown();
-        ex.shutdown();
     }
 
     private ConstraintStrategy<Runnable> createConstraintStrategies(Map<String, Double> thresholds, TaskTracker<Runnable> taskTracker, ScheduledExecutorService service) {

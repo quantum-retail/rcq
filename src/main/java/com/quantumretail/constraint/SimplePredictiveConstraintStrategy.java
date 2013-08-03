@@ -18,7 +18,6 @@ public class SimplePredictiveConstraintStrategy<T> extends SimpleReactiveConstra
     public SimplePredictiveConstraintStrategy(ResourceMonitor resourceMonitor, Map<String, Double> thresholds, LoadPredictor loadPredictor) {
         super(resourceMonitor, thresholds);
         this.loadPredictor = loadPredictor;
-
     }
 
 

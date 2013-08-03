@@ -57,7 +57,7 @@ public class ConstraintStrategies {
         ResourceMonitor measured = defaultCachingResourceMonitor();
 
         if (service != null) {
-            service.schedule(new ScalingFactorAdjuster(measured, predictive, loadPredictor), 10, TimeUnit.SECONDS);
+            service.scheduleAtFixedRate(new ScalingFactorAdjuster(measured, predictive, loadPredictor), 10, 10, TimeUnit.SECONDS);
         }
 
         return new SimplePredictiveConstraintStrategy<T>(

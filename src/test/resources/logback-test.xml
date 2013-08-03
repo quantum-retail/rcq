@@ -8,6 +8,11 @@
 
     <logger name="com.quantumretail" level="TRACE"/>
 
+    <!-- these can be helpful for debugging, but are usually too verbose -->
+    <logger name="com.quantumretail.rcq.predictor.LoadAwareLoadPredictor" level="DEBUG"/>
+    <logger name="com.quantumretail.resourcemon.SimplePredictiveResourceMonitor" level="DEBUG"/>
+    <logger name="com.quantumretail.constraint.SimplePredictiveConstraintStrategy" level="DEBUG"/>
+
     <root level="INFO">
         <appender-ref ref="STDOUT"/>
     </root>

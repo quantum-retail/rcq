@@ -3,9 +3,9 @@ package com.quantumretail.resourcemon;
 import org.junit.Test;
 
 import java.lang.management.ManagementFactory;
+import java.util.Map;
 
-import static junit.framework.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.*;
 
 /**
  * CpuResourceMonitor's behavior is JVM-dependant, so it's tough to test. We'll do our best to do some cursory tests for bad logic here.
@@ -20,7 +20,7 @@ public class CpuResourceMonitorTest {
     public void testGetSunMethod() throws Exception {
         // this only works on Sun or OpenJDK version 1.7+
         CpuResourceMonitor monitor = new CpuResourceMonitor(true, false);
-        Double cpu = monitor.getCPU();
+        Map<String, Double> cpu = monitor.getCPU();
         System.out.println("CPU is " + cpu);
         if (ManagementFactory.getRuntimeMXBean().getVmVendor().contains("Oracle")) {
             assertNotNull(cpu);
@@ -35,11 +35,12 @@ public class CpuResourceMonitorTest {
         while (System.currentTimeMillis() < (start + 500)) {
             random = Math.random() * 100 % 9;
         }
-        Double cpu = monitor.getCPU();
-        System.out.println("CPU is " + cpu + ", while our random number is " + random);
+        Map<String, Double> cpu = monitor.getCPU();
+        System.out.println("CPU is " + cpu);
         assertNotNull(cpu);
-        // uncomment when this is working:
-//        assertTrue("CPU should have been something > 0.0", cpu > 0.0);
+        assertTrue(cpu.size() > 1);
+        assertNotNull(cpu.get(CpuResourceMonitor.CPU));
+        assertTrue("CPU should have been something > 0.0", cpu.get(CpuResourceMonitor.CPU) > 0.0);
     }
 
     @Test
@@ -56,7 +57,7 @@ public class CpuResourceMonitorTest {
         value = monitor.getProcessTime(2, 2, prev, 1);
         assertEquals(prev, value); // we still don't have enough to go by to return a valid value -- measurements are within 10 milliseconds
 
-        long later = 20000001;
+        long later = CpuResourceMonitor.MIN_UPDATE_TIME + 2;
         value = monitor.getProcessTime(later, later, prev, 1);
         assertEquals(later, value.processCpuTimeNanos);
         assertEquals(later, value.timestampNanos);

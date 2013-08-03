@@ -9,6 +9,8 @@ import com.quantumretail.constraint.ConstraintStrategies;
 import com.quantumretail.constraint.ConstraintStrategy;
 import com.quantumretail.rcq.predictor.TaskTracker;
 import com.quantumretail.rcq.predictor.TaskTrackers;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
 import java.util.Iterator;
@@ -38,6 +40,7 @@ import java.util.concurrent.TimeUnit;
  *
  */
 public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAware {
+    private static final Logger log = LoggerFactory.getLogger(ResourceConstrainingQueue.class);
 
     public static <T> ResourceConstrainingQueueBuilder<T> builder() {
         return new ResourceConstrainingQueueBuilder<T>();
@@ -148,7 +151,16 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
     }
 
     protected boolean shouldReturn(T nextItem) {
-        return constraintStrategy.shouldReturn(nextItem);
+
+        boolean shouldReturn = constraintStrategy.shouldReturn(nextItem);
+        if (!shouldReturn && (taskTracker != null && taskTracker.currentTasks().isEmpty())) {
+            if (log.isDebugEnabled()) {
+                log.debug("Constraint strategy says we should not return an item, but task tracker says that there is nothing in progress. So returning it anyway.");
+            }
+            return true;
+        } else {
+            return shouldReturn;
+        }
     }
 
 

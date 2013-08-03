@@ -3,8 +3,12 @@ package com.quantumretail.collections;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import com.quantumretail.constraint.ConstraintStrategy;
+import com.quantumretail.constraint.SimplePredictiveConstraintStrategy;
 import com.quantumretail.constraint.SimpleReactiveConstraintStrategy;
+import com.quantumretail.rcq.predictor.*;
+import com.quantumretail.resourcemon.HighestValueAggregateResourceMonitor;
 import com.quantumretail.resourcemon.ResourceMonitor;
+import com.quantumretail.resourcemon.ResourceMonitors;
 import org.junit.Test;
 
 import java.lang.management.ManagementFactory;
@@ -14,6 +18,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
 
+import static com.quantumretail.resourcemon.ResourceMonitors.defaultCachingResourceMonitor;
+import static com.quantumretail.resourcemon.ResourceMonitors.defaultPredictiveResourceMonitor;
 import static org.junit.Assert.*;
 
 public class ResourceConstrainingQueueTest {
@@ -26,7 +32,7 @@ public class ResourceConstrainingQueueTest {
      * @throws Exception
      */
 //    @Test
-    public void testHappyPath() throws Exception {
+    public void test_long_running() throws Exception {
         long start = System.currentTimeMillis();
         int numProcessors = ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors();
         Map<String, Double> thresholds = new HashMap<String, Double>();
@@ -36,9 +42,16 @@ public class ResourceConstrainingQueueTest {
 //        final ResourceMonitor monitor = new CachingResourceMonitor(new AggregateResourceMonitor(), 100L);
         MetricRegistry metricRegistry = new MetricRegistry();
 
-        ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(1, new ResourceConstrainingQueues.NameableDaemonThreadFactory("thread-monitor-"));
+        ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(2, new ResourceConstrainingQueues.NameableDaemonThreadFactory("thread-monitor-"));
 //        ResourceConstrainingQueue<Runnable> queue = new ResourceConstrainingQueue<Runnable>(new LinkedBlockingQueue<Runnable>(), ConstraintStrategies.<Runnable>defaultReactiveConstraintStrategy(thresholds, 100), 100);
-        ResourceConstrainingQueue<Runnable> queue = ResourceConstrainingQueues.<Runnable>defaultQueue(thresholds);
+//        ResourceConstrainingQueue<Runnable> queue = ResourceConstrainingQueues.defaultQueue(thresholds);
+
+        TaskTracker<Runnable> taskTracker = TaskTrackers.defaultTaskTracker();
+        ResourceConstrainingQueue<Runnable> queue = new ResourceConstrainingQueue<Runnable>(
+                new LinkedBlockingQueue<Runnable>(),
+                createConstraintStrategies(thresholds, taskTracker, scheduledExecutorService),
+                ResourceMonitors.DEFAULT_UPDATE_FREQ,
+                taskTracker);
 
         queue.registerMetrics(metricRegistry, "queue");
 
@@ -61,10 +74,14 @@ public class ResourceConstrainingQueueTest {
         long runtime = System.currentTimeMillis() - start;
         System.out.println("Finished in " + runtime + " ms");
 
+        System.out.println("\n****");
         System.out.println("Average active threads: " + threadMonitor.getAverageActiveThreads());
         System.out.println("Max active threads: " + threadMonitor.getMaxActiveThreads());
         System.out.println("Average CPU: " + threadMonitor.getAverageCPU());
-
+        System.out.println("Average Measured CPU: " + threadMonitor.getAverageForKey("CPU.measured"));
+        System.out.println("Average Predicted CPU: " + threadMonitor.getAverageForKey("CPU.predicted"));
+        System.out.println("Threshold was " + CPU_THRESHOLD);
+        System.out.println("****\n");
         assertTrue(threadMonitor.getAverageActiveThreads() < 200);
         double minThreshold = CPU_THRESHOLD - 0.2;
         double maxThreshold = CPU_THRESHOLD + 0.03; // we can drift slightly over CPU_THRESHOLD, since we stop handing out tasks only after we cross it
@@ -74,6 +91,22 @@ public class ResourceConstrainingQueueTest {
         future.cancel(true);
         scheduledExecutorService.shutdown();
         ex.shutdown();
+    }
+
+    private ConstraintStrategy<Runnable> createConstraintStrategies(Map<String, Double> thresholds, TaskTracker<Runnable> taskTracker, ScheduledExecutorService service) {
+        AdjustableLoadPredictor loadPredictor = LoadPredictors.defaultLoadPredictor();
+        ResourceMonitor predictive = defaultPredictiveResourceMonitor(taskTracker, loadPredictor);
+        ResourceMonitor measured = defaultCachingResourceMonitor();
+
+        if (service != null) {
+            service.scheduleAtFixedRate(new ScalingFactorAdjuster(measured, predictive, loadPredictor, 10, TimeUnit.SECONDS), 1, 10, TimeUnit.SECONDS);
+        }
+
+        return new SimplePredictiveConstraintStrategy<Runnable>(
+                new HighestValueAggregateResourceMonitor(predictive, measured),
+                thresholds,
+                loadPredictor
+        );
     }
 
 //    This was here as a comparison for CPU % for non-constrained queues.
@@ -160,7 +193,12 @@ public class ResourceConstrainingQueueTest {
 
         public ThreadMonitor(ThreadPoolExecutor ex, MetricRegistry registry) {
             this.ex = ex;
-//            this.resourceMonitor = new AggregateResourceMonitor();
+//            this.resourceMonitor = new ResourceMonitor() {
+//                @Override
+//                public Map<String, Double> getLoad() {
+//                    return Collections.emptyMap();
+//                }
+//            };
             this.resourceMonitor = ((SimpleReactiveConstraintStrategy) ((ResourceConstrainingQueue) ex.getQueue()).getConstraintStrategy()).getResourceMonitor();
             this.registry = registry;
         }
@@ -189,11 +227,15 @@ public class ResourceConstrainingQueueTest {
         }
 
         public double getAverageCPU() {
+            return getAverageForKey(ResourceMonitor.CPU);
+        }
+
+        public double getAverageForKey(String key) {
             int samples = 0;
             double sum = 0;
             for (Map<String, Double> loadSample : loadSamples) {
-                if (loadSample.containsKey(ResourceMonitor.CPU)) {
-                    sum += loadSample.get(ResourceMonitor.CPU);
+                if (loadSample.containsKey(key)) {
+                    sum += loadSample.get(key);
                     samples++;
                 }
             }

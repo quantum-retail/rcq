@@ -65,15 +65,12 @@ public class ScalingFactorAdjuster implements Runnable {
                 double sf = getStartingScalingFactor(startingScalingFactors, prediction.getKey());
 
                 // Figure out what the scaling factor *should* have been for the two to be equal,
-                double idealSF = sf + (currentValue - prediction.getValue());
+                double idealSF = sf + (prediction.getValue() - currentValue);
                 idealScalingFactors.put(prediction.getKey(), idealSF);
                 matches = true;
             }
         }
-        if (!matches) {
-            log.warn("The measured resource monitor (" + measuredResourceMonitor.getClass() + ") and predicted resource monitor (" + super.getClass() + ") don't share any metrics in common. We won't be able to apply any learning.");
-        } else {
-
+        if (matches) {
             // Send the map of "ideal" scaling factors (those that would have made predictions exactly match real life) into the EWMA function.
             Map<String, Double> newSFMap = ewma.calculate(idealScalingFactors);
 

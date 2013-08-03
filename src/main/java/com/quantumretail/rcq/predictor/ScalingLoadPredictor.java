@@ -1,5 +1,9 @@
 package com.quantumretail.rcq.predictor;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -21,6 +25,8 @@ import java.util.Map;
  *
  */
 public abstract class ScalingLoadPredictor implements AdjustableLoadPredictor {
+    private static final Logger log = LoggerFactory.getLogger(ScalingLoadPredictor.class);
+
     private Map<String, Double> scalingFactor;
 
     public ScalingLoadPredictor(Map<String, Double> scalingFactor) {
@@ -34,15 +40,34 @@ public abstract class ScalingLoadPredictor implements AdjustableLoadPredictor {
      * @return
      */
     protected Map<String, Double> applyScalingFactor(Map<String, Double> inputMap) {
+        Map<String, Double> returnMap = new HashMap<String, Double>(inputMap);
         if (scalingFactor != null && !scalingFactor.isEmpty()) {
             for (Map.Entry<String, Double> loadEntry : inputMap.entrySet()) {
                 Double sf = scalingFactor.get(loadEntry.getKey());
                 if (sf != null && sf != 0 && sf != 1) {  // ignore null because it means "no adjustment", zero because it doesn't make sense, and 1 because it wouldn't change anything.
-                    inputMap.put(loadEntry.getKey(), (loadEntry.getValue() / scalingFactor.get(loadEntry.getKey())));
+                    double ps = bound(loadEntry.getValue() / scalingFactor.get(loadEntry.getKey()));
+                    returnMap.put(loadEntry.getKey(), ps);
                 }
             }
         }
         return inputMap;
+    }
+
+    /**
+     * Bound the new value so that 0.01 <= v <= 0.99
+     * @param v
+     * @return
+     */
+    protected Double bound(double v) {
+//        return Math.max(0.01, Math.min(0.99, v));
+        if (v < 0.00001) {
+            log.debug(v + " < 0.00001");
+            return 0.00001;
+        } else if (v > 0.99999) {
+            log.debug(v + " > 0.99999");
+            return 0.99999;
+        }
+        return v;
     }
 
     public Map<String, Double> getScalingFactor() {

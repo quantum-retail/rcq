@@ -2,6 +2,8 @@ package com.quantumretail.resourcemon;
 
 import com.quantumretail.rcq.predictor.LoadPredictor;
 import com.quantumretail.rcq.predictor.TaskTracker;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -18,6 +20,7 @@ import java.util.Map;
  * whichever is higher.
  */
 public class SimplePredictiveResourceMonitor implements ResourceMonitor {
+    private static final Logger log = LoggerFactory.getLogger(SimplePredictiveResourceMonitor.class);
     private final TaskTracker taskTracker;
     private final LoadPredictor loadPredictor;
 
@@ -56,6 +59,16 @@ public class SimplePredictiveResourceMonitor implements ResourceMonitor {
                 }
             }
         }
+        if (log.isTraceEnabled()) {
+            log.trace("Sum of " + tasks.size() + " is " + load);
+        }
+
+        Map<String, Double> m = new HashMap<String, Double>(load.size());
+        for (Map.Entry<String, Double> entry : load.entrySet()) {
+            m.put(entry.getKey() + ".predicted", entry.getValue());
+        }
+        m.put(".tasks", (double) tasks.size());
+        load.putAll(m);
         return load;
     }
 

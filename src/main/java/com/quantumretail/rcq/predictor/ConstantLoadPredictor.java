@@ -1,5 +1,6 @@
 package com.quantumretail.rcq.predictor;
 
+import java.util.Collections;
 import java.util.Map;
 
 /**
@@ -12,7 +13,7 @@ public class ConstantLoadPredictor extends ScalingLoadPredictor {
 
     public ConstantLoadPredictor(Map<String, Double> load, Map<String, Double> scalingFactor) {
         super(scalingFactor);
-        this.load = load;
+        this.load = Collections.unmodifiableMap(load);
     }
 
     @Override

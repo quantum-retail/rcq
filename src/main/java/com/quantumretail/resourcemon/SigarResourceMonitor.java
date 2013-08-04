@@ -1,7 +1,6 @@
 package com.quantumretail.resourcemon;
 
 import org.hyperic.sigar.Sigar;
-import org.hyperic.sigar.SigarException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,19 +26,19 @@ public class SigarResourceMonitor implements ResourceMonitor {
         try {
             this.sigar = new Sigar();
         } catch (Throwable e) {
-            log.debug("Error loading Sigar: "+ e.getMessage());
+            log.info("Sigar isn't available on the classpath; we'll use JVM-based resource monitoring methods instead.");
             sigarAvailable = false;
         }
     }
 
     @Override
     public Map<String, Double> getLoad() {
-        Map<String, Double> m = new HashMap<String,Double>();
+        Map<String, Double> m = new HashMap<String, Double>();
         if (sigarAvailable) {
             try {
-                double idleCpu= sigar.getCpuPerc().getIdle();
-                m.put(CPU, 1-idleCpu);
-                m.put(CPU+".sigar", 1-idleCpu);
+                double idleCpu = sigar.getCpuPerc().getIdle();
+                m.put(CPU, 1 - idleCpu);
+                m.put(CPU + ".sigar", 1 - idleCpu);
                 m.put("CPU.sigar_WAIT", sigar.getCpuPerc().getWait());
                 m.put("CPU.sigar_USER", sigar.getCpuPerc().getUser());
                 m.put("CPU.sigar_SYS", sigar.getCpuPerc().getSys());

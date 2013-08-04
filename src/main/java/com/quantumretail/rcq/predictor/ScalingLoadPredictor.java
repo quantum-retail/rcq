@@ -26,6 +26,8 @@ import java.util.Map;
  */
 public abstract class ScalingLoadPredictor implements AdjustableLoadPredictor {
     private static final Logger log = LoggerFactory.getLogger(ScalingLoadPredictor.class);
+    protected static final double MIN_BOUND = 0.00001;
+    protected static final double MAX_BOUND = 0.99999;
 
     private Map<String, Double> scalingFactor;
 
@@ -50,7 +52,7 @@ public abstract class ScalingLoadPredictor implements AdjustableLoadPredictor {
                 }
             }
         }
-        return inputMap;
+        return returnMap;
     }
 
     /**
@@ -60,12 +62,12 @@ public abstract class ScalingLoadPredictor implements AdjustableLoadPredictor {
      */
     protected Double bound(double v) {
 //        return Math.max(0.01, Math.min(0.99, v));
-        if (v < 0.00001) {
-            log.debug(v + " < 0.00001");
-            return 0.00001;
-        } else if (v > 0.99999) {
-            log.debug(v + " > 0.99999");
-            return 0.99999;
+        if (v < MIN_BOUND) {
+            log.debug(v + " < " + MIN_BOUND);
+            return MIN_BOUND;
+        } else if (v > MAX_BOUND) {
+            log.debug(v + " > " + MAX_BOUND);
+            return MAX_BOUND;
         }
         return v;
     }

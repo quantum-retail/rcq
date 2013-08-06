@@ -133,6 +133,13 @@
 
         <dependency>
             <!-- license: Apache 2 -->
+            <groupId>com.codahale.metrics</groupId>
+            <artifactId>metrics-core</artifactId>
+            <version>3.0.1</version>
+        </dependency>
+
+        <dependency>
+            <!-- license: Apache 2 -->
             <!-- sigar is by Hyperic, but repackaged by fusesource for maven use -->
             <groupId>org.fusesource</groupId>
             <artifactId>sigar</artifactId>
@@ -170,6 +177,20 @@
             <artifactId>easymock</artifactId>
             <version>3.1</version>
             <scope>test</scope>
+        </dependency>
+
+        <!-- Logback for test only -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>1.0.13</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.carrotsearch</groupId>
+            <artifactId>junit-benchmarks</artifactId>
+            <version>0.7.1</version>
         </dependency>
     </dependencies>
 

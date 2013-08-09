@@ -74,6 +74,15 @@ public class SimplePredictiveResourceMonitorTest {
         Collection<Object> values = new ArrayList<Object>();
 
         @Override
+        public int incrementConstrained(Object item) {
+            return 0;
+        }
+
+        @Override
+        public void removeConstrained(Object item) {
+        }
+
+        @Override
         public Collection<Object> currentTasks() {
             return values;
         }

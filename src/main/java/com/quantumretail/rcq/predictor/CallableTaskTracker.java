@@ -15,6 +15,23 @@ import java.util.concurrent.ConcurrentMap;
 public class CallableTaskTracker implements TaskTracker {
     final ConcurrentMap<Object, Object> tasks = new ConcurrentHashMap<Object, Object>();
 
+    final ConcurrentHashMap<Object, Integer> unableToExecuteTaskTries = new ConcurrentHashMap<Object, Integer>();
+
+    @Override
+    public int incrementConstrained(Object item) {
+        Integer attempts= unableToExecuteTaskTries.get(item);
+        if(attempts == null){
+            attempts = 0;
+        }
+        attempts = attempts+1;
+        unableToExecuteTaskTries.put(item, attempts);
+        return attempts;
+    }
+
+    @Override
+    public void removeConstrained(Object item) {
+        unableToExecuteTaskTries.remove(item);
+    }
 
     @Override
     public Collection<Object> currentTasks() {

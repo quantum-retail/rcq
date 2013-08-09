@@ -25,4 +25,7 @@ public interface TaskTracker<T> {
      * @param nextItem
      */
     T register(T nextItem);
+
+    int incrementConstrained(T item);
+    void removeConstrained(T item);
 }

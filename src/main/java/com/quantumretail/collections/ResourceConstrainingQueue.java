@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Callable;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
@@ -23,22 +24,21 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * Note that this resource-constraining behavior ONLY occurs on {@link #poll()} and {@link #remove()}. Other access methods
  * like {@link #peek()}, {@link #iterator()}, {@link #toArray()}, and so on will bypass the resource-constraining behavior.
- *
+ * <p/>
  * In some ways, this implementation is naive. At the moment when the resource usage drops below the threshold, we hand out items
  * to all who ask, until the moment when resource usage rises above the threshold again. That means that if we have a lot
  * of askers (for example, if it's the queue feeding a very large thread pool) we'll get large bursts of threads, and
  * typically a higher-than-ideal # of threads active.
- *
+ * <p/>
  * There are some smarter ways around this:
- *  - we could make it probabilistic, with a decreasing probability that we hand something out based on available resources
- *  - we could make assumptions about what things we've handed out recently will do to the resource usage -- say, assume
- *    that anything we've handed out in the last X ms will be adding Y% points, they just haven't yet.
- *  - we could actually track the tasks that are currently active (via a separate TaskTracker), and come up with a
- *    weighted moving average of task-to-resource-utilization.
- *  - ???
- *
+ * - we could make it probabilistic, with a decreasing probability that we hand something out based on available resources
+ * - we could make assumptions about what things we've handed out recently will do to the resource usage -- say, assume
+ * that anything we've handed out in the last X ms will be adding Y% points, they just haven't yet.
+ * - we could actually track the tasks that are currently active (via a separate TaskTracker), and come up with a
+ * weighted moving average of task-to-resource-utilization.
+ * - ???
+ * <p/>
  * If strict = true, we'll use blocking in remove(), poll() and take(). Otherwise, we'll use a non-blocking (but slightly less accurate) behavior.
- *
  */
 public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAware {
     private static final Logger log = LoggerFactory.getLogger(ResourceConstrainingQueue.class);
@@ -48,9 +48,12 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
     }
 
     protected static final long DEFAULT_POLL_FREQ = 100L;
+    //the default will try for 10 mins  (default poll freq = 100L)
+    protected static final long DEFAULT_CONSTRAINED_ITEM_THRESHOLD = (10 * 60 * 1000) / DEFAULT_POLL_FREQ ;
 
     final BlockingQueue<T> delegate;
     long retryFrequencyMS = DEFAULT_POLL_FREQ;
+    long constrainedItemThreshold = DEFAULT_CONSTRAINED_ITEM_THRESHOLD;
 
     final ConstraintStrategy<T> constraintStrategy;
 
@@ -83,11 +86,17 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
     }
 
     public ResourceConstrainingQueue(BlockingQueue<T> delegate, ConstraintStrategy<T> constraintStrategy, long retryFrequencyMS, boolean strict, TaskTracker<T> taskTracker) {
+        this(delegate, constraintStrategy, retryFrequencyMS, strict, taskTracker, DEFAULT_CONSTRAINED_ITEM_THRESHOLD);
+    }
+
+    public ResourceConstrainingQueue(BlockingQueue<T> delegate, ConstraintStrategy<T> constraintStrategy, long retryFrequencyMS, boolean strict, TaskTracker<T> taskTracker, long constrainedItemThreshold) {
+
         this.delegate = delegate;
         this.retryFrequencyMS = retryFrequencyMS;
         this.constraintStrategy = constraintStrategy;
         this.taskTracker = taskTracker;
         this.strict = strict;
+        this.constrainedItemThreshold = constrainedItemThreshold;
     }
 
     protected T trackIfNecessary(T item) {
@@ -128,7 +137,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
      * Note that this is an approximation, and as such, we take some liberties in regards accuracy when called from
      * multiple threads.
      * In particular:
-     *
+     * <p/>
      * This implementation will do a peek, see if we have resource for the task at the head of the queue, and if so,
      * call delegate.remove() and return the result. That means that if two threads call this at the very same time,
      * they'll both check to see if we have resources for the same task (the one at the front of the queue) but they will
@@ -137,7 +146,6 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
      * We could fix this by doing something more accurate here, but since we don't have an atomic "compareAndGet" type
      * of operation from the underlying queue, we may need to resort to blocking. Currently, we're preferring speed over
      * complete accuracy here. In the face of multiple concurrent calls, the checks we're doing aren't accurate anyway.
-     *
      *
      * @return
      */
@@ -187,7 +195,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
      * Note that this is an approximation, and as such, we take some liberties in regards accuracy when called from
      * multiple threads.
      * In particular:
-     *
+     * <p/>
      * This implementation will do a peek, see if we have resource for the task at the head of the queue, and if so,
      * call delegate.remove() and return the result. That means that if two threads call this at the very same time,
      * they'll both check to see if we have resources for the same task (the one at the front of the queue) but they will
@@ -196,7 +204,6 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
      * We could fix this by doing something more accurate here, but since we don't have an atomic "compareAndGet" type
      * of operation from the underlying queue, we may need to resort to blocking. Currently, we're preferring speed over
      * complete accuracy here. In the face of multiple concurrent calls, the checks we're doing aren't accurate anyway.
-     *
      *
      * @return the next value in the queue or null if we cannot currently execute anything.
      */
@@ -226,9 +233,9 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
     /**
      * See poll() for a description of the potential inaccuracy in this method.
      *
-     * @see #poll() for an explanation of the potential inaccuracy in this method
      * @return
      * @throws InterruptedException
+     * @see #poll() for an explanation of the potential inaccuracy in this method
      */
     @Override
     public T take() throws InterruptedException {
@@ -239,11 +246,19 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
             }
             while (true) {
                 T nextItem = delegate.peek();
-                if (nextItem!=null && shouldReturn(nextItem)) {
+                if (nextItem != null && shouldReturn(nextItem)) {
                     // Note that we might be returning a *different item* than nextItem if we have multiple threads accessing this concurrently!
                     // We're intentionally taking that risk to avoid locking.
                     return trackIfNecessary(delegate.take());
                 } else {
+                    if (nextItem != null && taskTracker != null) {
+                        //increment number of tries for this item
+                        int attempts = taskTracker.incrementConstrained(nextItem);
+                        if (attempts >= constrainedItemThreshold) {
+                            return failForTooMayTries(nextItem);
+                        }
+
+                    }
                     sleep();
                 }
             }
@@ -252,6 +267,19 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
                 takeLock.unlock();
             }
         }
+    }
+
+    T failForTooMayTries(T item) throws InterruptedException{
+        log.error("Could not take item after " + constrainedItemThreshold + " attempts");
+        //take the item from the delegate
+        delegate.take();
+        taskTracker.removeConstrained(item);
+        return (T) new Callable() {
+
+            public Object call() throws Exception {
+                throw new Exception("Could not take item after " + constrainedItemThreshold + " attempts");
+            }
+        };
     }
 
     /**
@@ -305,6 +333,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
 
     /**
      * This method does NOT make any resource constraint checks. It just delegates to the underlying queue.
+     *
      * @see java.util.Queue#element()
      */
     @Override
@@ -314,6 +343,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
 
     /**
      * This method does NOT make any resource constraint checks. It just delegates to the underlying queue.
+     *
      * @see java.util.Queue#peek()
      */
     @Override
@@ -324,6 +354,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
     /**
      * This method does not make any resource constraint checks. It just delegates to the underlying queue. So it is
      * literally "how many elements in the queue?" not "how many elements do I have resources to execute?"
+     *
      * @see java.util.Queue#size()
      */
     @Override
@@ -334,6 +365,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
     /**
      * This method does not make any resource constraint checks. It just delegates to the underlying queue. So it is
      * literally "are there any elements in the queue?" not "do I have resources to execute any elements in the queue?"
+     *
      * @see java.util.Queue#isEmpty()
      */
     @Override
@@ -343,6 +375,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
 
     /**
      * This method does not make any resource constraint checks. It just delegates to the underlying queue.
+     *
      * @see java.util.Queue#contains(Object)
      */
     @Override
@@ -352,6 +385,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
 
     /**
      * This method does not make any resource constraint checks. It just delegates to the underlying queue.
+     *
      * @see java.util.concurrent.BlockingQueue#drainTo(java.util.Collection)
      */
     public int drainTo(Collection<? super T> c) {
@@ -364,6 +398,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
 
     /**
      * This method does not make any resource constraint checks. It just delegates to the underlying queue.
+     *
      * @see java.util.concurrent.BlockingQueue#drainTo(java.util.Collection, int)
      */
     public int drainTo(Collection<? super T> c, int maxElements) {
@@ -387,6 +422,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
 
     /**
      * This method does NOT make any resource constraint checks. It just delegates to the underlying queue.
+     *
      * @see java.util.Queue#toArray()
      */
     @Override
@@ -396,6 +432,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
 
     /**
      * This method does NOT make any resource constraint checks. It just delegates to the underlying queue.
+     *
      * @see java.util.Queue#toArray(Object[])
      */
     @Override
@@ -405,6 +442,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
 
     /**
      * This method does not make any resource constraint checks. It just delegates to the underlying queue.
+     *
      * @see java.util.Queue#remove(Object)
      */
     @Override
@@ -417,6 +455,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
 
     /**
      * This method does not make any resource constraint checks. It just delegates to the underlying queue.
+     *
      * @see java.util.Queue#containsAll(java.util.Collection)
      */
     @Override
@@ -426,6 +465,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
 
     /**
      * This method does not make any resource constraint checks. It just delegates to the underlying queue.
+     *
      * @see java.util.concurrent.BlockingQueue#addAll(java.util.Collection)
      */
     public boolean addAll(Collection<? extends T> c) {
@@ -437,6 +477,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
 
     /**
      * This method does not make any resource constraint checks. It just delegates to the underlying queue.
+     *
      * @see java.util.concurrent.BlockingQueue#removeAll(java.util.Collection)
      */
     @Override
@@ -449,6 +490,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
 
     /**
      * This method does not make any resource constraint checks. It just delegates to the underlying queue.
+     *
      * @see java.util.concurrent.BlockingQueue#retainAll(java.util.Collection)
      */
     @Override
@@ -459,6 +501,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
 
     /**
      * This method does not make any resource constraint checks. It just delegates to the underlying queue.
+     *
      * @see java.util.concurrent.BlockingQueue#clear()
      */
     @Override
@@ -491,9 +534,9 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
      * Add t to the back of the queue. Note that ResourceConstrainingQueue doesn't make any resource constraint checks
      * on insertions into the queue, only on removals.
      *
-     * @see java.util.concurrent.BlockingQueue#put(Object)
      * @param t
      * @throws InterruptedException
+     * @see java.util.concurrent.BlockingQueue#put(Object)
      */
     public void put(T t) throws InterruptedException {
         markAddition();
@@ -504,9 +547,9 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
      * Note that ResourceConstrainingQueue doesn't make any resource constraint checks
      * on insertions into the queue, only on removals.
      *
-     * @see java.util.concurrent.BlockingQueue#offer(Object, long, java.util.concurrent.TimeUnit)
      * @param t
      * @throws InterruptedException
+     * @see java.util.concurrent.BlockingQueue#offer(Object, long, java.util.concurrent.TimeUnit)
      */
     public boolean offer(T t, long timeout, TimeUnit unit) throws InterruptedException {
         markAddition();
@@ -520,6 +563,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
 
     /**
      * Get the constraint strategy that we're using to decide whether to hand out items.
+     *
      * @return
      */
     public ConstraintStrategy<T> getConstraintStrategy() {

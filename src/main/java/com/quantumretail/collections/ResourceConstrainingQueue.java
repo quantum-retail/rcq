@@ -239,7 +239,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
             }
             while (true) {
                 T nextItem = delegate.peek();
-                if (shouldReturn(nextItem)) {
+                if (nextItem!=null && shouldReturn(nextItem)) {
                     // Note that we might be returning a *different item* than nextItem if we have multiple threads accessing this concurrently!
                     // We're intentionally taking that risk to avoid locking.
                     return trackIfNecessary(delegate.take());

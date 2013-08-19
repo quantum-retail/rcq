@@ -49,7 +49,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
 
     protected static final long DEFAULT_POLL_FREQ = 100L;
     //the default will try for 10 mins  (default poll freq = 100L)
-    protected static final long DEFAULT_CONSTRAINED_ITEM_THRESHOLD = (10 * 60 * 1000) / DEFAULT_POLL_FREQ ;
+    protected static final long DEFAULT_CONSTRAINED_ITEM_THRESHOLD = (10 * 60 * 1000) / DEFAULT_POLL_FREQ;
 
     final BlockingQueue<T> delegate;
     long retryFrequencyMS = DEFAULT_POLL_FREQ;
@@ -240,11 +240,11 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
     @Override
     public T take() throws InterruptedException {
         boolean locking = shouldLock();
-        try {
-            if (locking) {
-                takeLock.lock();
-            }
-            while (true) {
+        while (true) {
+            try {
+                if (locking) {
+                    takeLock.lock();
+                }
                 T nextItem = delegate.peek();
                 if (nextItem != null && shouldReturn(nextItem)) {
                     // Note that we might be returning a *different item* than nextItem if we have multiple threads accessing this concurrently!
@@ -259,17 +259,18 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
                         }
 
                     }
-                    sleep();
+                }
+
+            } finally {
+                if (locking) {
+                    takeLock.unlock();
                 }
             }
-        } finally {
-            if (locking) {
-                takeLock.unlock();
-            }
+            sleep();
         }
     }
 
-    T failForTooMayTries(T item) throws InterruptedException{
+    T failForTooMayTries(T item) throws InterruptedException {
         log.error("Could not take item after " + constrainedItemThreshold + " attempts");
         //take the item from the delegate
         delegate.take();

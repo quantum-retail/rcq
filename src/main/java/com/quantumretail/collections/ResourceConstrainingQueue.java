@@ -277,7 +277,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
         if (item instanceof FutureTask) {
             try {
                 FutureTask futureTask = (FutureTask) item;
-                Method m = futureTask.getClass().getDeclaredMethod("setException", Throwable.class);
+                Method m = getFutureTaskClass(futureTask.getClass()).getDeclaredMethod("setException", Throwable.class);
                 m.setAccessible(true);
                 m.invoke(item, new Exception("Could not take item after " + constrainedItemThreshold + " attempts"));
                 return item;
@@ -286,6 +286,14 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
             }
         }
         return item;
+    }
+
+    Class getFutureTaskClass(Class clz) {
+        if (clz == FutureTask.class) {
+            return clz;
+        } else {
+            return clz.getSuperclass();
+        }
     }
 
     /**

@@ -93,7 +93,8 @@ public class ResourceConstrainingQueueTest {
         EasyMock.replay(constraintStrategy);
         //create a constraining queue with retry of 100 ms and item threshold of only 1
         ResourceConstrainingQueue<Runnable> resourceConstrainingQueue = new NoResource_RCQ<Runnable>(delegate, constraintStrategy, 100, true, TaskTrackers.<Runnable>defaultTaskTracker(), 1);
-        ThreadPoolExecutor ex = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, resourceConstrainingQueue);
+        //Using a custom thread pool executor to simulate the possibility of custom future tasks coming into the system
+        CustomThreadPoolExecutor ex = new CustomThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, resourceConstrainingQueue, new ResourceConstrainingQueues.NameableDaemonThreadFactory("test"));
         ex.prestartAllCoreThreads();
         Future future = ex.submit(new SimpleCallable());
         Object result = future.get(2, TimeUnit.SECONDS);
@@ -103,6 +104,23 @@ public class ResourceConstrainingQueueTest {
         @Override
         public String call() throws Exception {
             return "Done";
+        }
+    }
+
+    private class CustomThreadPoolExecutor extends ThreadPoolExecutor {
+        public CustomThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit timeUnit, BlockingQueue<Runnable> runnables, java.util.concurrent.ThreadFactory threadFactory) {
+            super(corePoolSize, maximumPoolSize, keepAliveTime, timeUnit, runnables, threadFactory);
+        }
+
+        @Override
+        protected <V> RunnableFuture<V> newTaskFor(Callable<V> c) {
+            return new CustomFutureTask(c);
+        }
+
+        class CustomFutureTask extends FutureTask {
+            public CustomFutureTask(Callable callable) {
+                super(callable);
+            }
         }
     }
 

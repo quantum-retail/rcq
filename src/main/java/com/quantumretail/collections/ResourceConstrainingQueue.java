@@ -14,10 +14,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
 import java.util.Iterator;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.Callable;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -255,7 +252,8 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
                         //increment number of tries for this item
                         int attempts = taskTracker.incrementConstrained(nextItem);
                         if (attempts >= constrainedItemThreshold) {
-                            return failForTooMayTries(nextItem);
+                            T failedResult =  failForTooMayTries(nextItem);
+                            return failedResult;
                         }
 
                     }
@@ -271,16 +269,16 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
     }
 
     T failForTooMayTries(T item) throws InterruptedException {
-        log.error("Could not take item after " + constrainedItemThreshold + " attempts");
+        log.error("Could not take item after " + constrainedItemThreshold + " attempts:  " + item);
         //take the item from the delegate
         delegate.take();
         taskTracker.removeConstrained(item);
-        return (T) new Callable() {
-
+        return (T) new FutureTask(new Callable() {
             public Object call() throws Exception {
+                log.debug("Calling fail-too-many-times future task");
                 throw new Exception("Could not take item after " + constrainedItemThreshold + " attempts");
             }
-        };
+        });
     }
 
     /**

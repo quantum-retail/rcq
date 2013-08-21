@@ -84,7 +84,7 @@ public class ResourceConstrainingQueueTest {
         ex.shutdown();
     }
 
-    @Test
+    @Test(expected = ExecutionException.class)
     public void testNoResources_ThenFail() throws Exception {
         LinkedBlockingQueue delegate = new LinkedBlockingQueue();
         ConstraintStrategy constraintStrategy = EasyMock.createMock(ConstraintStrategy.class);
@@ -96,13 +96,7 @@ public class ResourceConstrainingQueueTest {
         ThreadPoolExecutor ex = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, resourceConstrainingQueue);
         ex.prestartAllCoreThreads();
         Future future = ex.submit(new SimpleCallable());
-        Object result = null;
-        try {
-            result = future.get(1000, TimeUnit.SECONDS);
-        } catch (ExecutionException executionException) {
-            System.out.println("Got execution exception: " + executionException);
-        } catch (TimeoutException toe){}
-        System.out.println("Result: " + result);
+        Object result = future.get(2, TimeUnit.SECONDS);
     }
 
     class SimpleCallable implements Callable<String> {

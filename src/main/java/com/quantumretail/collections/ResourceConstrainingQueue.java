@@ -12,6 +12,7 @@ import com.quantumretail.rcq.predictor.TaskTrackers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.Method;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.concurrent.*;
@@ -252,7 +253,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
                         //increment number of tries for this item
                         int attempts = taskTracker.incrementConstrained(nextItem);
                         if (attempts >= constrainedItemThreshold) {
-                            T failedResult =  failForTooMayTries(nextItem);
+                            T failedResult = failForTooMayTries(nextItem);
                             return failedResult;
                         }
 
@@ -273,12 +274,18 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
         //take the item from the delegate
         delegate.take();
         taskTracker.removeConstrained(item);
-        return (T) new FutureTask(new Callable() {
-            public Object call() throws Exception {
-                log.debug("Calling fail-too-many-times future task");
-                throw new Exception("Could not take item after " + constrainedItemThreshold + " attempts");
+        if (item instanceof FutureTask) {
+            try {
+                FutureTask futureTask = (FutureTask) item;
+                Method m = futureTask.getClass().getDeclaredMethod("setException", Throwable.class);
+                m.setAccessible(true);
+                m.invoke(item, new Exception("Could not take item after " + constrainedItemThreshold + " attempts"));
+                return item;
+            } catch (Exception e) {
+                log.error("Error setting exception on future task", e);
             }
-        });
+        }
+        return item;
     }
 
     /**

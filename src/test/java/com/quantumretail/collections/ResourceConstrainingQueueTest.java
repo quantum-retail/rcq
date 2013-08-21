@@ -93,6 +93,7 @@ public class ResourceConstrainingQueueTest {
         EasyMock.replay(constraintStrategy);
         //create a constraining queue with retry of 100 ms and item threshold of only 1
         ResourceConstrainingQueue<Runnable> resourceConstrainingQueue = new NoResource_RCQ<Runnable>(delegate, constraintStrategy, 100, true, TaskTrackers.<Runnable>defaultTaskTracker(), 1);
+        resourceConstrainingQueue.setFailAfterAttemptThresholdReached(true);
         //Using a custom thread pool executor to simulate the possibility of custom future tasks coming into the system
         CustomThreadPoolExecutor ex = new CustomThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, resourceConstrainingQueue, new ResourceConstrainingQueues.NameableDaemonThreadFactory("test"));
         ex.prestartAllCoreThreads();

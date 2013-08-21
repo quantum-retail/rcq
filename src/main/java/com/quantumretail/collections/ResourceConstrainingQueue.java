@@ -45,6 +45,8 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
         return new ResourceConstrainingQueueBuilder<T>();
     }
 
+    private boolean failAfterAttemptThresholdReached = false;
+
     protected static final long DEFAULT_POLL_FREQ = 100L;
     //the default will try for 10 mins  (default poll freq = 100L)
     protected static final long DEFAULT_CONSTRAINED_ITEM_THRESHOLD = (10 * 60 * 1000) / DEFAULT_POLL_FREQ;
@@ -248,15 +250,17 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
                     // Note that we might be returning a *different item* than nextItem if we have multiple threads accessing this concurrently!
                     // We're intentionally taking that risk to avoid locking.
                     return trackIfNecessary(delegate.take());
-                } else {
-                    if (nextItem != null && taskTracker != null) {
-                        //increment number of tries for this item
-                        int attempts = taskTracker.incrementConstrained(nextItem);
-                        if (attempts >= constrainedItemThreshold) {
+                } else if (nextItem != null && taskTracker != null) {
+                    //increment number of tries for this item
+                    int attempts = taskTracker.incrementConstrained(nextItem);
+                    if (attempts >= constrainedItemThreshold) {
+                        if (failAfterAttemptThresholdReached) {
                             T failedResult = failForTooMayTries(nextItem);
                             return failedResult;
+                        } else {
+                            //just log it and continue to try
+                            log.warn("Could not take item after " + (constrainedItemThreshold * retryFrequencyMS / 1000.0) + " seconds:" + nextItem);
                         }
-
                     }
                 }
 
@@ -608,6 +612,14 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
             ((MetricsAware) taskTracker).registerMetrics(metrics, name);
         }
 
+    }
+
+    public boolean isFailAfterAttemptThresholdReached() {
+        return failAfterAttemptThresholdReached;
+    }
+
+    public void setFailAfterAttemptThresholdReached(boolean failAfterAttemptThresholdReached) {
+        this.failAfterAttemptThresholdReached = failAfterAttemptThresholdReached;
     }
 
 

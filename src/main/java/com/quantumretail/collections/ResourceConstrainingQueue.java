@@ -260,6 +260,8 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
                         } else {
                             //just log it and continue to try
                             log.warn("Could not take item after " + (constrainedItemThreshold * retryFrequencyMS / 1000.0) + " seconds:" + nextItem);
+                            //set retries back to 1
+                            taskTracker.resetConstrained(nextItem);
                         }
                     }
                 }

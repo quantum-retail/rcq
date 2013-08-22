@@ -29,6 +29,13 @@ public class CallableTaskTracker implements TaskTracker {
     }
 
     @Override
+    public void resetConstrained(Object item) {
+        if(unableToExecuteTaskTries.contains(item)){
+        unableToExecuteTaskTries.put(item, 1);
+        }
+    }
+
+    @Override
     public void removeConstrained(Object item) {
         unableToExecuteTaskTries.remove(item);
     }

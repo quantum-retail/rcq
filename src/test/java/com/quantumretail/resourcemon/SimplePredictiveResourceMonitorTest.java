@@ -74,6 +74,20 @@ public class SimplePredictiveResourceMonitorTest {
         Collection<Object> values = new ArrayList<Object>();
 
         @Override
+        public int incrementConstrained(Object item) {
+            return 0;
+        }
+
+        @Override
+        public void resetConstrained(Object item) {
+            //To change body of implemented methods use File | Settings | File Templates.
+        }
+
+        @Override
+        public void removeConstrained(Object item) {
+        }
+
+        @Override
         public Collection<Object> currentTasks() {
             return values;
         }

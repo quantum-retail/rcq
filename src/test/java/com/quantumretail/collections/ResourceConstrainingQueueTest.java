@@ -9,6 +9,7 @@ import com.quantumretail.rcq.predictor.*;
 import com.quantumretail.resourcemon.HighestValueAggregateResourceMonitor;
 import com.quantumretail.resourcemon.ResourceMonitor;
 import com.quantumretail.resourcemon.ResourceMonitors;
+import org.easymock.EasyMock;
 import org.junit.Test;
 
 import java.lang.management.ManagementFactory;
@@ -29,6 +30,7 @@ public class ResourceConstrainingQueueTest {
     /**
      * this test is not entirely deterministic, so it's disabled by default.
      * But it is a really interesting test to run now and again to see how well things operate.
+     *
      * @throws Exception
      */
     //@Test
@@ -80,6 +82,58 @@ public class ResourceConstrainingQueueTest {
         future.cancel(true);
         scheduledExecutorService.shutdown();
         ex.shutdown();
+    }
+
+    @Test(expected = ExecutionException.class)
+    public void testNoResources_ThenFail() throws Exception {
+        LinkedBlockingQueue delegate = new LinkedBlockingQueue();
+        ConstraintStrategy constraintStrategy = EasyMock.createMock(ConstraintStrategy.class);
+        //always return false for should return
+        EasyMock.expect(constraintStrategy.shouldReturn(EasyMock.anyObject())).andReturn(false).anyTimes();
+        EasyMock.replay(constraintStrategy);
+        //create a constraining queue with retry of 100 ms and item threshold of only 1
+        ResourceConstrainingQueue<Runnable> resourceConstrainingQueue = new NoResource_RCQ<Runnable>(delegate, constraintStrategy, 100, true, TaskTrackers.<Runnable>defaultTaskTracker(), 1);
+        resourceConstrainingQueue.setFailAfterAttemptThresholdReached(true);
+        //Using a custom thread pool executor to simulate the possibility of custom future tasks coming into the system
+        CustomThreadPoolExecutor ex = new CustomThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, resourceConstrainingQueue, new ResourceConstrainingQueues.NameableDaemonThreadFactory("test"));
+        ex.prestartAllCoreThreads();
+        Future future = ex.submit(new SimpleCallable());
+        Object result = future.get(2, TimeUnit.SECONDS);
+    }
+
+    class SimpleCallable implements Callable<String> {
+        @Override
+        public String call() throws Exception {
+            return "Done";
+        }
+    }
+
+    private class CustomThreadPoolExecutor extends ThreadPoolExecutor {
+        public CustomThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit timeUnit, BlockingQueue<Runnable> runnables, java.util.concurrent.ThreadFactory threadFactory) {
+            super(corePoolSize, maximumPoolSize, keepAliveTime, timeUnit, runnables, threadFactory);
+        }
+
+        @Override
+        protected <V> RunnableFuture<V> newTaskFor(Callable<V> c) {
+            return new CustomFutureTask(c);
+        }
+
+        class CustomFutureTask extends FutureTask {
+            public CustomFutureTask(Callable callable) {
+                super(callable);
+            }
+        }
+    }
+
+    private class NoResource_RCQ<T> extends ResourceConstrainingQueue<T> {
+        public NoResource_RCQ(BlockingQueue<T> delegate, ConstraintStrategy<T> constraintStrategy, long retryFrequencyMS, boolean strict, TaskTracker<T> taskTracker, long constrainedItemThreshold) {
+            super(delegate, constraintStrategy, retryFrequencyMS, strict, taskTracker, constrainedItemThreshold);
+        }
+
+        @Override
+        protected boolean shouldReturn(T nextItem) {
+            return constraintStrategy.shouldReturn(nextItem);
+        }
     }
 
     private void printStatistics(Double CPU_THRESHOLD, ThreadMonitor threadMonitor) {
@@ -169,6 +223,7 @@ public class ResourceConstrainingQueueTest {
     /**
      * I'll admit, this test is here more for test coverage numbers than the real possibility that the builder is broken.
      * Although i suppose the builder *could* be broken....
+     *
      * @throws Exception
      */
     @Test

@@ -15,7 +15,7 @@ import java.util.concurrent.ConcurrentMap;
  * A reactive constraint: it returns true if the *current* load is below a constant threshold.
  *
  */
-public class SimpleReactiveConstraintStrategy<T> implements ConstraintStrategy<T>, MetricsAware {
+public class SimpleReactiveConstraintStrategy<T> implements ConstraintStrategy<T>, MetricsAware, ResourceMonitorAware {
     private final Logger log = LoggerFactory.getLogger(getClass());
 
     private final ConcurrentMap<String, Double> thresholds;
@@ -101,4 +101,6 @@ public class SimpleReactiveConstraintStrategy<T> implements ConstraintStrategy<T
         this.metricRegistry = metricRegistry;
         this.metricName = name;
     }
+
+
 }

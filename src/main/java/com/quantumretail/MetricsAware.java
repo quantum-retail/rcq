@@ -1,6 +1,6 @@
 package com.quantumretail;
 
-import com.codahale.metrics.MetricRegistry;
+import com.yammer.metrics.core.MetricsRegistry;
 
 /**
  * Indicates that a class can expose things via the Coda Hale's Metrics framework (<a href="http://metrics.codahale.com">http://metrics.codahale.com</a>)
@@ -14,6 +14,6 @@ public interface MetricsAware {
      * @param metrics the metrics registry in which to register our metrics
      * @param name the name to append to all of our metrics. Probably relates to the use of this component: "job-queue", "foo-request-queue", etc.
      */
-    public void registerMetrics(MetricRegistry metrics, String name);
+    public void registerMetrics(MetricsRegistry metrics, String name);
 
 }

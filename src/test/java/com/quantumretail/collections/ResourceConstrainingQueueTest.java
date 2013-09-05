@@ -1,7 +1,5 @@
 package com.quantumretail.collections;
 
-import com.codahale.metrics.Meter;
-import com.codahale.metrics.MetricRegistry;
 import com.quantumretail.constraint.ConstraintStrategy;
 import com.quantumretail.constraint.SimplePredictiveConstraintStrategy;
 import com.quantumretail.constraint.SimpleReactiveConstraintStrategy;
@@ -9,6 +7,10 @@ import com.quantumretail.rcq.predictor.*;
 import com.quantumretail.resourcemon.HighestValueAggregateResourceMonitor;
 import com.quantumretail.resourcemon.ResourceMonitor;
 import com.quantumretail.resourcemon.ResourceMonitors;
+import com.yammer.metrics.core.Meter;
+import com.yammer.metrics.core.Metric;
+import com.yammer.metrics.core.MetricName;
+import com.yammer.metrics.core.MetricsRegistry;
 import org.easymock.EasyMock;
 import org.junit.Test;
 
@@ -33,16 +35,16 @@ public class ResourceConstrainingQueueTest {
      *
      * @throws Exception
      */
-    //@Test
+    @Test
     public void test_long_running() throws Exception {
         long start = System.currentTimeMillis();
         int numProcessors = ManagementFactory.getOperatingSystemMXBean().getAvailableProcessors();
         Map<String, Double> thresholds = new HashMap<String, Double>();
-        final Double CPU_THRESHOLD = 0.9;
+        final Double CPU_THRESHOLD = 0.95;
         thresholds.put(ResourceMonitor.CPU, CPU_THRESHOLD);
         // final ResourceMonitor monitor = new CachingResourceMonitor(new AggregateResourceMonitor(new SigarResourceMonitor(), new HeapResourceMonitor(), new LoadAverageResourceMonitor(), new CpuResourceMonitor(), new EWMAMonitor(new CpuResourceMonitor(), 100, TimeUnit.MILLISECONDS)), 100L);
         // final ResourceMonitor monitor = new CachingResourceMonitor(new AggregateResourceMonitor(), 100L);
-        MetricRegistry metricRegistry = new MetricRegistry();
+        MetricsRegistry metricRegistry = new MetricsRegistry();
 
         ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(2, new ResourceConstrainingQueues.NameableDaemonThreadFactory("thread-monitor-"));
         // ResourceConstrainingQueue<Runnable> queue = new ResourceConstrainingQueue<Runnable>(new LinkedBlockingQueue<Runnable>(), ConstraintStrategies.<Runnable>defaultReactiveConstraintStrategy(thresholds, 100), 100);
@@ -245,13 +247,13 @@ public class ResourceConstrainingQueueTest {
     private class ThreadMonitor implements Runnable {
         final ThreadPoolExecutor ex;
         ResourceMonitor resourceMonitor;
-        MetricRegistry registry;
+        MetricsRegistry registry;
         int numSamples;
         int activeSum;
         int maxActive = 0;
         List<Map<String, Double>> loadSamples = new ArrayList<Map<String, Double>>();
 
-        public ThreadMonitor(ThreadPoolExecutor ex, MetricRegistry registry) {
+        public ThreadMonitor(ThreadPoolExecutor ex, MetricsRegistry registry) {
             this.ex = ex;
 //            this.resourceMonitor = new ResourceMonitor() {
 //                @Override
@@ -272,8 +274,10 @@ public class ResourceConstrainingQueueTest {
             loadSamples.add(resourceMonitor.getLoad());
             System.out.println(ex.getActiveCount() + " " + ex.getCompletedTaskCount() + " " + resourceMonitor.getLoad());
             if (registry != null) {
-                for (Map.Entry<String, Meter> m : registry.getMeters().entrySet()) {
-                    System.out.println(" -- " + m.getKey() + " : " + m.getValue().getMeanRate() + ", " + m.getValue().getOneMinuteRate() + " (" + m.getValue().getCount() + ")");
+                for (Map.Entry<MetricName, Metric> m : registry.allMetrics().entrySet()) {
+                    if (m.getValue() instanceof Meter) {
+                        System.out.println(" -- " + m.getKey() + " : " + ((Meter) m.getValue()).meanRate() + ", " + ((Meter) m.getValue()).oneMinuteRate() + " (" + ((Meter) m.getValue()).count() + ")");
+                    }
                 }
             }
         }

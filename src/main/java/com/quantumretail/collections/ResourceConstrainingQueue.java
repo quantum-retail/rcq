@@ -1,21 +1,21 @@
 package com.quantumretail.collections;
 
-import com.codahale.metrics.Counter;
-import com.codahale.metrics.Gauge;
-import com.codahale.metrics.Meter;
-import com.codahale.metrics.MetricRegistry;
 import com.quantumretail.MetricsAware;
 import com.quantumretail.constraint.ConstraintStrategies;
 import com.quantumretail.constraint.ConstraintStrategy;
 import com.quantumretail.rcq.predictor.TaskTracker;
 import com.quantumretail.rcq.predictor.TaskTrackers;
+import com.yammer.metrics.core.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Method;
 import java.util.Collection;
 import java.util.Iterator;
-import java.util.concurrent.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -590,19 +590,19 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
         return constraintStrategy;
     }
 
-    public void registerMetrics(MetricRegistry metrics, String name) {
-        metrics.register(MetricRegistry.name(ResourceConstrainingQueue.class, name, "size"),
+    public void registerMetrics(MetricsRegistry metrics, String name) {
+        metrics.newGauge(new MetricName(ResourceConstrainingQueue.class, name, "size"),
                 new Gauge<Integer>() {
                     @Override
-                    public Integer getValue() {
+                    public Integer value() {
                         return size();
                     }
                 });
 
-        pendingItems = metrics.counter(MetricRegistry.name(ResourceConstrainingQueue.class, name, "pending-items"));
-        trackedRemovals = metrics.meter(MetricRegistry.name(ResourceConstrainingQueue.class, name, "remove-poll-take"));
-        additions = metrics.meter(MetricRegistry.name(ResourceConstrainingQueue.class, name, "add-offer-put"));
-        sleeps = metrics.meter(MetricRegistry.name(ResourceConstrainingQueue.class, "sleeps"));
+        pendingItems = metrics.newCounter(new MetricName(ResourceConstrainingQueue.class, name, "pending-items"));
+        trackedRemovals = metrics.newMeter(new MetricName(ResourceConstrainingQueue.class, name, "remove-poll-take"), "item", TimeUnit.SECONDS);
+        additions = metrics.newMeter(new MetricName(ResourceConstrainingQueue.class, name, "add-offer-put"), "item", TimeUnit.SECONDS);
+        sleeps = metrics.newMeter(new MetricName(ResourceConstrainingQueue.class, "sleeps"), "item", TimeUnit.SECONDS);
 
         if (this.constraintStrategy instanceof MetricsAware) {
             ((MetricsAware) constraintStrategy).registerMetrics(metrics, name);

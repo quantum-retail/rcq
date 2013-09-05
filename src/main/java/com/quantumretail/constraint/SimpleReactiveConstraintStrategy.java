@@ -1,16 +1,18 @@
 package com.quantumretail.constraint;
 
-import com.codahale.metrics.Meter;
-import com.codahale.metrics.MetricRegistry;
 import com.quantumretail.MetricsAware;
 import com.quantumretail.resourcemon.ResourceMonitor;
 import com.quantumretail.resourcemon.ResourceMonitorAware;
+import com.yammer.metrics.core.Meter;
+import com.yammer.metrics.core.MetricName;
+import com.yammer.metrics.core.MetricsRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
 
 /**
  * A reactive constraint: it returns true if the *current* load is below a constant threshold.
@@ -22,7 +24,7 @@ public class SimpleReactiveConstraintStrategy<T> implements ConstraintStrategy<T
     private final ConcurrentMap<String, Double> thresholds;
     private final ResourceMonitor resourceMonitor;
     private final ConcurrentMap<String, Meter> metrics = new ConcurrentHashMap<String, Meter>();
-    private MetricRegistry metricRegistry = null;
+    private MetricsRegistry metricRegistry = null;
     private Meter allowed = null;
     private Meter denied = null;
     private String metricName = null;
@@ -74,7 +76,7 @@ public class SimpleReactiveConstraintStrategy<T> implements ConstraintStrategy<T
     private Meter getOrCreateDenialMeter(String key) {
         Meter m = metrics.get(key);
         if (m == null) {
-            m = metricRegistry.meter(MetricRegistry.name(SimpleReactiveConstraintStrategy.class, metricName, "denied", key));
+            m = metricRegistry.newMeter(new MetricName(SimpleReactiveConstraintStrategy.class, metricName, "denied: " + key), "item", TimeUnit.SECONDS);
             metrics.putIfAbsent(key, m);
         }
         return m;
@@ -96,9 +98,9 @@ public class SimpleReactiveConstraintStrategy<T> implements ConstraintStrategy<T
      * @param name
      */
     @Override
-    public void registerMetrics(MetricRegistry metricRegistry, String name) {
-        allowed = metricRegistry.meter(MetricRegistry.name(SimpleReactiveConstraintStrategy.class, name, "allowed"));
-        denied = metricRegistry.meter(MetricRegistry.name(SimpleReactiveConstraintStrategy.class, name, "denied"));
+    public void registerMetrics(MetricsRegistry metricRegistry, String name) {
+        allowed = metricRegistry.newMeter(new MetricName(SimpleReactiveConstraintStrategy.class, name, "allowed"), "item", TimeUnit.SECONDS);
+        denied = metricRegistry.newMeter(new MetricName(SimpleReactiveConstraintStrategy.class, name, "denied"), "item", TimeUnit.SECONDS);
         this.metricRegistry = metricRegistry;
         this.metricName = name;
     }

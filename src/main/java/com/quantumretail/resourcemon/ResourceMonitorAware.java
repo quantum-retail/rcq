@@ -1,6 +1,4 @@
-package com.quantumretail.constraint;
-
-import com.quantumretail.resourcemon.ResourceMonitor;
+package com.quantumretail.resourcemon;
 
 /**
  * Represents a thing that contains a ResourceMonitor. Or is aware of ResourceMonitors. Or otherwise can return a

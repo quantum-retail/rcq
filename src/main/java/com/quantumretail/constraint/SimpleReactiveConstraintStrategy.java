@@ -4,6 +4,7 @@ import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import com.quantumretail.MetricsAware;
 import com.quantumretail.resourcemon.ResourceMonitor;
+import com.quantumretail.resourcemon.ResourceMonitorAware;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

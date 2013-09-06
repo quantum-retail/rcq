@@ -32,12 +32,15 @@ public class HeapResourceMonitor implements ResourceMonitor {
         Map<String, Double> map = new HashMap<String, Double>();
         // if we have max, then max - used / max
         // otherwise, committed - used / committed
+        double heapMem;
         if (max > 0) {
-            map.put(HEAP_MEM, 1.0 - ( (max - used) / (double) max) );
+            heapMem = 1.0 - ((max - used) / (double) max);
         } else {
-            map.put(HEAP_MEM, 1.0 - ( (committed - used) / (double) committed) );
+            heapMem = 1.0 - ((committed - used) / (double) committed);
         }
 
+        map.put(HEAP_MEM, heapMem);
+        map.put(HEAP_MEM + ".measured", heapMem);
         return map;
     }
 

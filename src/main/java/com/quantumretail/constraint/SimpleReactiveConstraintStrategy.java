@@ -76,7 +76,7 @@ public class SimpleReactiveConstraintStrategy<T> implements ConstraintStrategy<T
     private Meter getOrCreateDenialMeter(String key) {
         Meter m = metrics.get(key);
         if (m == null) {
-            m = metricRegistry.newMeter(new MetricName(SimpleReactiveConstraintStrategy.class, metricName, "denied: " + key), "item", TimeUnit.SECONDS);
+            m = metricRegistry.newMeter(new MetricName(SimpleReactiveConstraintStrategy.class, metricName, "denied " + key), "item", TimeUnit.SECONDS);
             metrics.putIfAbsent(key, m);
         }
         return m;

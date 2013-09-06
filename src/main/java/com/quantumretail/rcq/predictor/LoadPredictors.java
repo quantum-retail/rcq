@@ -14,10 +14,6 @@ public class LoadPredictors {
 
     protected static final int NUM_CPUS = Runtime.getRuntime().availableProcessors();
 
-    public static AdjustableLoadPredictor defaultLoadPredictor(Map<String,Double> defaultLoad, Map<String,Double> scalingFactors) {
-        return new LoadAwareLoadPredictor(defaultLoad == null ? defaultLoad() : defaultLoad, scalingFactors == null ? defaultScalingFactors() : scalingFactors);
-    }
-
     public static AdjustableLoadPredictor defaultLoadPredictor() {
         return defaultLoadPredictor(defaultLoad(), defaultScalingFactors());
     }

@@ -18,6 +18,18 @@ public class LoadPredictors {
         return new LoadAwareLoadPredictor(defaultLoad(), defaultScalingFactors());
     }
 
+    /**
+     * Return a default instance of a LoadPredictor. If either argument is null, we'll provide defaults.
+     * @param defaultLoad can be null, we'll use {@link #defaultLoad()}
+     * @param scalingFactors can be null, we'll use {@link #defaultScalingFactors()}
+     * @return an instance of LoadPredictor
+     */
+    public static AdjustableLoadPredictor defaultLoadPredictor(Map<String,Double> defaultLoad, Map<String,Double> scalingFactors) {
+        return new LoadAwareLoadPredictor(
+                (defaultLoad == null? defaultLoad() : defaultLoad),
+                (scalingFactors == null? defaultScalingFactors() : scalingFactors));
+    }
+
     protected static Map<String, Double> defaultScalingFactors() {
         Map<String, Double> t = new HashMap<String, Double>();
         t.put(ResourceMonitor.CPU, 1.0);

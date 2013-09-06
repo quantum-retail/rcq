@@ -49,6 +49,12 @@ public class ResourceConstrainingQueues {
     }
 
     public static <T> ResourceConstrainingQueue<T> defaultQueueWithFeedbackThread(Map<String, Double> thresholds) {
+        return defaultQueueWithFeedbackThread(thresholds, (Map)null);
+
+    }
+
+
+    public static <T> ResourceConstrainingQueue<T> defaultQueueWithFeedbackThread(Map<String, Double> thresholds, Map<String, Double> scalingFactors) {
         ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor(new NameableDaemonThreadFactory("load-feedback-watcher-"));
         return defaultQueueWithFeedbackThread(thresholds, executorService);
 

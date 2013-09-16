@@ -105,7 +105,9 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
         if (pendingItems != null) {
             pendingItems.dec();
         }
-
+        if (taskAttemptCounter != null) {
+            taskAttemptCounter.removeConstrained(item);
+        }
         if (taskTracker != null) {
             return taskTracker.register(item);
         } else {

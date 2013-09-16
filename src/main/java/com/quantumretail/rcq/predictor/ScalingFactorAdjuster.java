@@ -51,6 +51,16 @@ public class ScalingFactorAdjuster implements Runnable {
 
         Map<String, Double> startingScalingFactors = loadPredictor.getScalingFactor();
 
+        boolean allZero = true;
+        for (Double predictedValue : predictedLoad.values()) {
+            if (predictedValue > 0) allZero = false;
+        }
+        if (allZero) {
+            // we don't have any predictions. This is probably because there are no tasks running. We don't want to skew
+            // our scaling factors in this case. Return without doing anything.
+            return;
+        }
+
         // See how different our scaled map is from the measured results from our measuredResourceMonitor.
         // of course, the predicted load could be entirely correct, and we just haven't gotten there yet (perhaps the tasks take a while to ramp up).
         // That's why we use a very long learning rate, so that we don't do anything rash.

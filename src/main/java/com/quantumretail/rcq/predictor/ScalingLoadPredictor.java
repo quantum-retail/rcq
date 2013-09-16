@@ -56,17 +56,14 @@ public abstract class ScalingLoadPredictor implements AdjustableLoadPredictor {
     }
 
     /**
-     * Bound the new value so that 0.01 <= v <= 0.99
+     * Bound the new value so that 0.00001 <= v <= 0.99999
      * @param v
      * @return
      */
     protected Double bound(double v) {
-//        return Math.max(0.01, Math.min(0.99, v));
         if (v < MIN_BOUND) {
-            log.debug(v + " < " + MIN_BOUND);
             return MIN_BOUND;
         } else if (v > MAX_BOUND) {
-            log.debug(v + " > " + MAX_BOUND);
             return MAX_BOUND;
         }
         return v;

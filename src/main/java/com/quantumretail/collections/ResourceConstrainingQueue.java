@@ -12,10 +12,7 @@ import org.slf4j.LoggerFactory;
 import java.lang.reflect.Method;
 import java.util.Collection;
 import java.util.Iterator;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.FutureTask;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -58,6 +55,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
     final ConstraintStrategy<T> constraintStrategy;
 
     final TaskTracker<T> taskTracker;
+    final TaskAttemptCounter taskAttemptCounter;
 
     private Meter trackedRemovals = null;
     private Meter additions = null;
@@ -97,6 +95,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
         this.taskTracker = taskTracker;
         this.strict = strict;
         this.constrainedItemThreshold = constrainedItemThreshold;
+        this.taskAttemptCounter = new TaskAttemptCounter();
     }
 
     protected T trackIfNecessary(T item) {
@@ -230,6 +229,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
         }
     }
 
+
     /**
      * See poll() for a description of the potential inaccuracy in this method.
      *
@@ -250,9 +250,9 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
                     // Note that we might be returning a *different item* than nextItem if we have multiple threads accessing this concurrently!
                     // We're intentionally taking that risk to avoid locking.
                     return trackIfNecessary(delegate.take());
-                } else if (nextItem != null && taskTracker != null) {
+                } else if (nextItem != null && taskAttemptCounter != null) {
                     //increment number of tries for this item
-                    int attempts = taskTracker.incrementConstrained(nextItem);
+                    int attempts = taskAttemptCounter.incrementConstrained(nextItem);
                     if (attempts >= constrainedItemThreshold) {
                         if (failAfterAttemptThresholdReached) {
                             T failedResult = failForTooMayTries(nextItem);
@@ -263,7 +263,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
                                 log.trace("Could not take item after " + (constrainedItemThreshold * retryFrequencyMS / 1000.0) + " seconds:" + nextItem);
                             }
                             //set retries back to 1
-                            taskTracker.resetConstrained(nextItem);
+                            taskAttemptCounter.resetConstrained(nextItem);
                         }
                     }
                 }
@@ -281,7 +281,7 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
         log.error("Could not take item after " + constrainedItemThreshold + " attempts:  " + item);
         //take the item from the delegate
         delegate.take();
-        taskTracker.removeConstrained(item);
+        taskAttemptCounter.removeConstrained(item);
         if (item instanceof FutureTask) {
             try {
                 FutureTask futureTask = (FutureTask) item;
@@ -675,4 +675,29 @@ public class ResourceConstrainingQueue<T> implements BlockingQueue<T>, MetricsAw
     }
 
 
+    protected static class TaskAttemptCounter {
+
+        final ConcurrentHashMap<Object, Integer> unableToExecuteTaskTries = new ConcurrentHashMap<Object, Integer>();
+
+        public int incrementConstrained(Object item) {
+            Integer attempts = unableToExecuteTaskTries.get(item);
+            if (attempts == null) {
+                attempts = 0;
+            }
+            attempts = attempts + 1;
+            unableToExecuteTaskTries.put(item, attempts);
+            return attempts;
+        }
+
+        public void resetConstrained(Object item) {
+            if (unableToExecuteTaskTries.contains(item)) {
+                unableToExecuteTaskTries.put(item, 1);
+            }
+        }
+
+        public void removeConstrained(Object item) {
+            unableToExecuteTaskTries.remove(item);
+        }
+
+    }
 }

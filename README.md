@@ -151,11 +151,11 @@ Wraps another resource manager, smoothing its result using an exponentially weig
 RCQ follows the convention of having a class with the plural form of the interface containing static factory methods
 returning typical implementations of that interface. For example:
 
-* **com.quantumretail.collections.ResourceConstrainingQueues**, containing builders for simple use-cases for complete queues.
-* **com.quantumretail.constraint.ConstraintStrategies**, containing builders for a variety of ConstraintStrategies.
-* **com.quantumretail.rcq.predictor.LoadPredictors**
-* **com.quantumretail.rcq.predictor.TaskTrackers**
-* **com.quantumretail.resourcemon.ResourceMonitors**
+* **`com.quantumretail.collections.ResourceConstrainingQueues`**, containing builders for simple use-cases for complete queues.
+* **`com.quantumretail.constraint.ConstraintStrategies`**, containing builders for a variety of ConstraintStrategies.
+* **`com.quantumretail.rcq.predictor.LoadPredictors`** *idem*
+* **`com.quantumretail.rcq.predictor.TaskTrackers`** *idem*
+* **`com.quantumretail.resourcemon.ResourceMonitors`** *idem*
 
 
 ## TODO ##

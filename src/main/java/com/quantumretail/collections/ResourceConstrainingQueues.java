@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Class providing some factory methods of typical ResourceConstrainingQueue combinations
  *
- * There are a lot of moving parts here, so this is intended to make life a little simpler. Note that there is also
+ * There are a lot of moving parts in RCQ, so this is intended to make life a little simpler. Note that there is also
  * a builder, in case that helps.
  *
  * @see ResourceConstrainingQueue
@@ -49,7 +49,7 @@ public class ResourceConstrainingQueues {
     }
 
     public static <T> ResourceConstrainingQueue<T> defaultQueueWithFeedbackThread(Map<String, Double> thresholds) {
-        return defaultQueueWithFeedbackThread(thresholds, (Map)null);
+        return defaultQueueWithFeedbackThread(thresholds, (Map) null);
 
     }
 

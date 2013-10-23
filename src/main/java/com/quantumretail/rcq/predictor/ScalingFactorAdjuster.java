@@ -10,8 +10,17 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
- * TODO: document me.
+ * A Runnable, intended to run periodically in a separate thread (via a ScheduledExecutorService, most likely) which
+ * will monitor the real load vs. the predicted load and adjust the "scaling factor" (the system-specific multiplier
+ * on "predicted load") using an exponentially weighted moving average.
+ * It optionally takes a measurementHalfLife parameter, which you can use to adjust how quickly it will move the
+ * predicted load to meet the measured load. You should set this to something close to the expected runtime of one
+ * of the tasks that we are measuring the effects of.
  *
+ * Since we are tracking those tasks, perhaps in the future we could set that value ourself. But that would introduce
+ * another interdependency between components (this time on TaskTracker) that might not be worth it.
+ *
+ * There's a convenient helper method to create these in {@link com.quantumretail.constraint.ConstraintStrategies}.
  */
 public class ScalingFactorAdjuster implements Runnable {
     private static final Logger log = LoggerFactory.getLogger(ScalingFactorAdjuster.class);

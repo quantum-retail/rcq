@@ -7,8 +7,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * TODO: document me.
- *
+ * Some helper methods to create LoadPredictors with typical configurations.
  */
 public class LoadPredictors {
 
@@ -24,10 +23,10 @@ public class LoadPredictors {
      * @param scalingFactors can be null, we'll use {@link #defaultScalingFactors()}
      * @return an instance of LoadPredictor
      */
-    public static AdjustableLoadPredictor defaultLoadPredictor(Map<String,Double> defaultLoad, Map<String,Double> scalingFactors) {
+    public static AdjustableLoadPredictor defaultLoadPredictor(Map<String, Double> defaultLoad, Map<String, Double> scalingFactors) {
         return new LoadAwareLoadPredictor(
-                (defaultLoad == null? defaultLoad() : defaultLoad),
-                (scalingFactors == null? defaultScalingFactors() : scalingFactors));
+                (defaultLoad == null ? defaultLoad() : defaultLoad),
+                (scalingFactors == null ? defaultScalingFactors() : scalingFactors));
     }
 
     protected static Map<String, Double> defaultScalingFactors() {

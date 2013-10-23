@@ -5,7 +5,7 @@ import com.quantumretail.rcq.predictor.LoadPredictors;
 import com.quantumretail.rcq.predictor.TaskTracker;
 
 /**
- * TODO: document me.
+ *Helper factory methods for ResourceMonitors.
  *
  */
 public class ResourceMonitors {

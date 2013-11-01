@@ -59,7 +59,6 @@ local.properties
 .idea
 .idea/
 .idea/**
-qlogic.i*
 .classpath
 .project
 nbproject

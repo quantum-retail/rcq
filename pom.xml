@@ -9,6 +9,14 @@
     <description>resource-constraining queue</description>
     <packaging>jar</packaging>
 
+    <licenses>
+      <license>
+        <name>The Apache Software License, Version 2.0</name>
+        <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+        <distribution>repo</distribution>
+        <comments>A business-friendly OSS license</comments>
+      </license>
+    </licenses>
 
     <prerequisites>
         <!-- we require at least Maven 2.2.1.  Maven 3 works, too. -->

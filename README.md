@@ -1,4 +1,4 @@
-# Resource Cosntraining Queue #
+# Resource Constraining Queue #
 
 ## Why RCQ? ##
 

@@ -162,3 +162,6 @@ returning typical implementations of that interface. For example:
 
 * A comprehensive builder object that replaces the somewhat cumbersome static helper methods. Some of the static helpers
 are getting long enough that they are hard to use.
+* It would be nice to have a way to record real vs. predicted load over time, along with when tasks begin and end. We could then use this data to "replay" a given load profile and test enhancements to RCQ in isolation of the rest of the app. 
+* RCQ adjusts the scaling factor over time, but does not save the new adjusted scaling factor to disk. So we have to restart learning every time we restart the server. That should be a simple enhancement.
+* It would be nice to have a resource monitor that reads a "resources" from a simple file on disk (in json, CSV, or property file format, perhaps).  Something like "CPU = 0.39". That type of monitor could then be wrapped in a CachingResourceMonitor to make it read from disk only once every few seconds, and could then be used along with shell scripts that read resource usage directly from OS-level tools, or from scripts that monitored resource usage on another server. We could then throttle resource usage based on database server load, for example. 
